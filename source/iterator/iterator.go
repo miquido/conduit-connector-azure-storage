@@ -17,7 +17,7 @@ package iterator
 import (
 	"context"
 
-	"github.com/conduitio/conduit-connector-sdk"
+	sdk "github.com/conduitio/conduit-connector-sdk"
 )
 
 type Iterator interface {
