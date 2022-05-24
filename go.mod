@@ -2,9 +2,15 @@ module github.com/miquido/conduit-connector-azure-storage
 
 go 1.18
 
-require github.com/conduitio/conduit-connector-sdk v0.2.0
+require (
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.4.1
+	github.com/conduitio/conduit-connector-sdk v0.2.0
+	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
+)
 
 require (
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.0.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.0.0 // indirect
 	github.com/conduitio/conduit-connector-protocol v0.2.0 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/golang/mock v1.6.0 // indirect
@@ -25,5 +31,4 @@ require (
 	google.golang.org/genproto v0.0.0-20220518221133-4f43b3371335 // indirect
 	google.golang.org/grpc v1.46.2 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
-	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637 // indirect
 )

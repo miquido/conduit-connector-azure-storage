@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package iterator
 
 import (
-	sdk "github.com/conduitio/conduit-connector-sdk"
-	as "github.com/miquido/conduit-connector-azure-storage"
-	asSource "github.com/miquido/conduit-connector-azure-storage/source"
+	"context"
+
+	"github.com/conduitio/conduit-connector-sdk"
 )
 
-func main() {
-	sdk.Serve(as.Specification, asSource.NewSource, nil)
+type Iterator interface {
+	HasNext(ctx context.Context) bool
+	Next(ctx context.Context) (sdk.Record, error)
+	Stop()
 }
