@@ -17,14 +17,19 @@ package source
 import (
 	"context"
 	"fmt"
+	"net/http"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	sdk "github.com/conduitio/conduit-connector-sdk"
+	"github.com/miquido/conduit-connector-azure-storage/source/iterator"
+	"github.com/miquido/conduit-connector-azure-storage/source/position"
 )
 
 type Source struct {
 	sdk.UnimplementedSource
 
-	config Config
+	config   Config
+	iterator iterator.Iterator
 }
 
 func NewSource() sdk.Source {
@@ -40,18 +45,71 @@ func (s *Source) Configure(_ context.Context, cfgRaw map[string]string) (err err
 	return nil
 }
 
-func (s *Source) Open(ctx context.Context, _ sdk.Position) error {
+func (s *Source) Open(ctx context.Context, rp sdk.Position) error {
+	// Create account connection client
+	serviceClient, err := azblob.NewServiceClientFromConnectionString(s.config.ConnectionString, nil)
+	if err != nil {
+		return fmt.Errorf("connector open error: could not create account connection client: %w", err)
+	}
+
+	// Test account connection
+	accountInfo, err := serviceClient.GetAccountInfo(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("connector open error: could not establish a connection: %w", err)
+	}
+	if accountInfo.RawResponse.StatusCode != http.StatusOK {
+		return fmt.Errorf("connector open error: could not establish a connection: unexpected response status %d", accountInfo.RawResponse.StatusCode)
+	}
+
+	// Create container client
+	containerClient, err := serviceClient.NewContainerClient(s.config.ContainerName)
+	if err != nil {
+		return fmt.Errorf("connector open error: could not create container connection client: %w", err)
+	}
+
+	// Check if container exists
+	_, err = containerClient.GetProperties(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("connector open error: could not create container connection client: %w", err)
+	}
+
+	// Parse position to start from
+	recordPosition, err := position.NewFromRecordPosition(rp)
+	if err != nil {
+		return err
+	}
+
+	// Create container's items iterator
+	s.iterator, err = iterator.NewCombinedIterator(s.config.PollingPeriod, containerClient, s.config.MaxResults, recordPosition)
+	if err != nil {
+		return fmt.Errorf("connector open error: couldn't create a combined iterator: %w", err)
+	}
+
 	return nil
 }
 
 func (s *Source) Read(ctx context.Context) (sdk.Record, error) {
-	return sdk.Record{}, nil
+	if !s.iterator.HasNext(ctx) {
+		return sdk.Record{}, sdk.ErrBackoffRetry
+	}
+
+	record, err := s.iterator.Next(ctx)
+	if err != nil {
+		return sdk.Record{}, fmt.Errorf("read error: %w", err)
+	}
+
+	return record, nil
 }
 
 func (s *Source) Ack(_ context.Context, _ sdk.Position) error {
-	return nil
+	return nil // no ack needed
 }
 
-func (s *Source) Teardown(ctx context.Context) error {
+func (s *Source) Teardown(_ context.Context) error {
+	if s.iterator != nil {
+		s.iterator.Stop()
+		s.iterator = nil
+	}
+
 	return nil
 }

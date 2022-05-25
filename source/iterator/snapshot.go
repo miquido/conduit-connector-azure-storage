@@ -22,13 +22,13 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	sdk "github.com/conduitio/conduit-connector-sdk"
-	"github.com/miquido/conduit-connector-azure-storage/source"
+	"github.com/miquido/conduit-connector-azure-storage/source/position"
 	"gopkg.in/tomb.v2"
 )
 
 func NewSnapshotIterator(
 	client *azblob.ContainerClient,
-	p source.Position,
+	p position.Position,
 	maxResults int32,
 ) (*SnapshotIterator, error) {
 	if maxResults < 1 {
@@ -114,13 +114,13 @@ worker:
 						return err
 					}
 
-					p := source.Position{
+					p := position.Position{
 						Key:       *item.Name,
-						Type:      source.TypeSnapshot,
-						Timestamp: *item.Properties.LastModified,
+						Type:      position.TypeSnapshot,
+						Timestamp: w.maxLastModified,
 					}
 
-					position, err := p.ToRecordPosition()
+					recordPosition, err := p.ToRecordPosition()
 					if err != nil {
 						return err
 					}
@@ -129,7 +129,7 @@ worker:
 						Metadata: map[string]string{
 							"content-type": *item.Properties.ContentType,
 						},
-						Position:  position,
+						Position:  recordPosition,
 						Payload:   sdk.RawData(rawBody),
 						Key:       sdk.RawData(*item.Name),
 						CreatedAt: *item.Properties.CreationTime,

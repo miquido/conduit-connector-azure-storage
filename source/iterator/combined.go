@@ -22,7 +22,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	sdk "github.com/conduitio/conduit-connector-sdk"
-	"github.com/miquido/conduit-connector-azure-storage/source"
+	"github.com/miquido/conduit-connector-azure-storage/source/position"
 )
 
 type CombinedIterator struct {
@@ -38,7 +38,7 @@ func NewCombinedIterator(
 	pollingPeriod time.Duration,
 	client *azblob.ContainerClient,
 	maxResults int32,
-	p source.Position,
+	p position.Position,
 ) (c *CombinedIterator, err error) {
 	c = &CombinedIterator{
 		pollingPeriod: pollingPeriod,
@@ -47,19 +47,19 @@ func NewCombinedIterator(
 	}
 
 	switch p.Type {
-	case source.TypeSnapshot:
+	case position.TypeSnapshot:
 		if len(p.Key) != 0 {
 			fmt.Printf("Warning: got position: %+v, snapshot will be restarted from the beginning of the bucket\n", p)
 		}
 
-		p = source.NewSnapshotPosition() // always start snapshot from the beginning, so position is nil
+		p = position.NewSnapshotPosition() // always start snapshot from the beginning, so position is nil
 
 		c.snapshotIterator, err = NewSnapshotIterator(client, p, maxResults)
 		if err != nil {
 			return nil, fmt.Errorf("could not create the snapshot iterator: %w", err)
 		}
 
-	case source.TypeCDC:
+	case position.TypeCDC:
 		c.cdcIterator, err = NewCDCIterator(pollingPeriod, client, p.Timestamp, maxResults)
 		if err != nil {
 			return nil, fmt.Errorf("could not create the CDC iterator: %w", err)
@@ -156,12 +156,12 @@ func (c *CombinedIterator) switchToCDCIterator() (err error) {
 }
 
 func convertToCDCPosition(p sdk.Position) (sdk.Position, error) {
-	cdcPos, err := source.NewFromRecordPosition(p)
+	cdcPos, err := position.NewFromRecordPosition(p)
 	if err != nil {
 		return sdk.Position{}, err
 	}
 
-	cdcPos.Type = source.TypeCDC
+	cdcPos.Type = position.TypeCDC
 
 	return cdcPos.ToRecordPosition()
 }

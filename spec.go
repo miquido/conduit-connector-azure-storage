@@ -15,12 +15,15 @@
 package salesforce
 
 import (
+	"strconv"
+
 	sdk "github.com/conduitio/conduit-connector-sdk"
+	"github.com/miquido/conduit-connector-azure-storage/source"
 )
 
 func Specification() sdk.Specification {
 	return sdk.Specification{
-		Name:              "salesforce",
+		Name:              "azure-storage",
 		Summary:           "An Azure Storage source plugin for Conduit.",
 		Version:           "v0.1.0",
 		Author:            "Miquido",
@@ -28,7 +31,26 @@ func Specification() sdk.Specification {
 			//
 		},
 		SourceParams: map[string]sdk.Parameter{
-			//
+			source.ConfigKeyConnectionString: {
+				Default:     "",
+				Required:    true,
+				Description: "The Azure Blob connection string.",
+			},
+			source.ConfigKeyContainerName: {
+				Default:     "",
+				Required:    true,
+				Description: "The name of the container to watch.",
+			},
+			source.ConfigKeyPollingPeriod: {
+				Default:     source.DefaultPollingPeriod,
+				Required:    false,
+				Description: "The polling period for the CDC mode, formatted as a time.Duration string.",
+			},
+			source.ConfigKeyMaxResults: {
+				Default:     strconv.FormatInt(int64(source.DefaultMaxResults), 32),
+				Required:    false,
+				Description: "The maximum number of items per page when reading container's items.",
+			},
 		},
 	}
 }

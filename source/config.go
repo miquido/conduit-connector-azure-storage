@@ -14,14 +14,87 @@
 
 package source
 
+import (
+	"fmt"
+	"strconv"
+	"time"
+)
+
+const (
+	ConfigKeyConnectionString = "connectionString"
+	ConfigKeyContainerName    = "containerName"
+
+	ConfigKeyPollingPeriod = "pollingPeriod"
+	DefaultPollingPeriod   = "1s"
+
+	ConfigKeyMaxResults       = "maxResults"
+	DefaultMaxResults   int32 = 5000
+)
+
 type Config struct {
-	//
+	ConnectionString string
+	ContainerName    string
+	PollingPeriod    time.Duration
+	MaxResults       int32
 }
 
-func ParseConfig(cfgRaw map[string]string) (Config, error) {
+func ParseConfig(cfgRaw map[string]string) (_ Config, err error) {
 	cfg := Config{
-		//
+		ConnectionString: cfgRaw[ConfigKeyConnectionString],
+		ContainerName:    cfgRaw[ConfigKeyContainerName],
+	}
+
+	if cfg.PollingPeriod, err = parsePollingPeriod(cfgRaw); err != nil {
+		return Config{}, err
+	}
+
+	if cfg.MaxResults, err = parseMaxResults(cfgRaw); err != nil {
+		return Config{}, err
 	}
 
 	return cfg, nil
+}
+
+func parsePollingPeriod(cfgRaw map[string]string) (time.Duration, error) {
+	pollingPeriodString, exists := cfgRaw[ConfigKeyPollingPeriod]
+	if !exists || pollingPeriodString == "" {
+		pollingPeriodString = DefaultPollingPeriod
+	}
+
+	pollingPeriod, err := time.ParseDuration(pollingPeriodString)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"%q config value should be a valid duration",
+			ConfigKeyPollingPeriod,
+		)
+	}
+	if pollingPeriod <= 0 {
+		return 0, fmt.Errorf(
+			"%q config value should be positive, got %s",
+			ConfigKeyPollingPeriod,
+			pollingPeriod,
+		)
+	}
+
+	return pollingPeriod, nil
+}
+
+func parseMaxResults(cfgRaw map[string]string) (int32, error) {
+	maxResultsString, exists := cfgRaw[ConfigKeyMaxResults]
+	if !exists || maxResultsString == "" {
+		return DefaultMaxResults, nil
+	}
+
+	maxResultsParsed, err := strconv.ParseInt(maxResultsString, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse %q config value: %w", ConfigKeyMaxResults, err)
+	}
+	if maxResultsParsed <= 0 {
+		return 0, fmt.Errorf("failed to parse %q config value: value must be greater than 0", ConfigKeyMaxResults)
+	}
+	if maxResultsParsed > 5_000 {
+		return 0, fmt.Errorf("failed to parse %q config value: value must not be grater than 5 000", ConfigKeyMaxResults)
+	}
+
+	return int32(maxResultsParsed), nil
 }

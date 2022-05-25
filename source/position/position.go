@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package source
+package position
 
 import (
 	"bytes"
@@ -29,10 +29,14 @@ const (
 
 type Type int
 
-func NewFromRecordPosition(p sdk.Position) (out Position, err error) {
+func NewFromRecordPosition(recordPosition sdk.Position) (out Position, err error) {
+	if recordPosition == nil {
+		return
+	}
+
 	var buffer bytes.Buffer
 
-	buffer.Write(p)
+	buffer.Write(recordPosition)
 
 	err = gob.NewDecoder(&buffer).Decode(&out)
 

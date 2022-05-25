@@ -23,7 +23,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	sdk "github.com/conduitio/conduit-connector-sdk"
-	"github.com/miquido/conduit-connector-azure-storage/source"
+	"github.com/miquido/conduit-connector-azure-storage/source/position"
 	"gopkg.in/tomb.v2"
 )
 
@@ -65,7 +65,6 @@ type CDCIterator struct {
 }
 
 func (w *CDCIterator) HasNext(_ context.Context) bool {
-	// return true
 	return len(w.buffer) > 0 || !w.tomb.Alive() // if tomb is dead we return true so caller will fetch error with Next
 }
 
@@ -173,13 +172,13 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 		return sdk.Record{}, err
 	}
 
-	p := source.Position{
+	p := position.Position{
 		Key:       *entry.Name,
 		Timestamp: *entry.Properties.LastModified,
-		Type:      source.TypeCDC,
+		Type:      position.TypeCDC,
 	}
 
-	position, err := p.ToRecordPosition()
+	recordPosition, err := p.ToRecordPosition()
 	if err != nil {
 		return sdk.Record{}, err
 	}
@@ -188,7 +187,7 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 		Metadata: map[string]string{
 			"content-type": *object.ContentType,
 		},
-		Position:  position,
+		Position:  recordPosition,
 		Payload:   sdk.RawData(rawBody),
 		Key:       sdk.RawData(p.Key),
 		CreatedAt: p.Timestamp,
@@ -196,13 +195,13 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 }
 
 func (w *CDCIterator) createDeletedRecord(entry *azblob.BlobItemInternal) (sdk.Record, error) {
-	p := source.Position{
+	p := position.Position{
 		Key:       *entry.Name,
 		Timestamp: *entry.Properties.LastModified,
-		Type:      source.TypeCDC,
+		Type:      position.TypeCDC,
 	}
 
-	position, err := p.ToRecordPosition()
+	recordPosition, err := p.ToRecordPosition()
 	if err != nil {
 		return sdk.Record{}, err
 	}
@@ -211,7 +210,7 @@ func (w *CDCIterator) createDeletedRecord(entry *azblob.BlobItemInternal) (sdk.R
 		Metadata: map[string]string{
 			"action": "delete",
 		},
-		Position:  position,
+		Position:  recordPosition,
 		Key:       sdk.RawData(p.Key),
 		CreatedAt: p.Timestamp,
 	}, nil
