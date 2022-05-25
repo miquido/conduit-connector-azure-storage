@@ -17,6 +17,7 @@ package iterator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -30,7 +31,12 @@ func NewCDCIterator(
 	pollingPeriod time.Duration,
 	client *azblob.ContainerClient,
 	from time.Time,
+	maxResults int32,
 ) (*CDCIterator, error) {
+	if maxResults < 1 {
+		return nil, fmt.Errorf("maxResults is expected to be greater that or equal to 1, got %d", maxResults)
+	}
+
 	cdc := CDCIterator{
 		client:        client,
 		buffer:        make(chan sdk.Record, 1),
@@ -39,6 +45,7 @@ func NewCDCIterator(
 		nextKeyMarker: nil,
 		tomb:          tomb.Tomb{},
 		lastModified:  from,
+		maxResults:    maxResults,
 	}
 
 	cdc.tomb.Go(cdc.producer)
@@ -51,14 +58,15 @@ type CDCIterator struct {
 	buffer        chan sdk.Record
 	ticker        *time.Ticker
 	lastModified  time.Time
+	maxResults    int32
 	isTruncated   bool
 	nextKeyMarker *string
 	tomb          tomb.Tomb
 }
 
 func (w *CDCIterator) HasNext(_ context.Context) bool {
-	return true
-	// return len(w.buffer) > 0 || !w.tomb.Alive() // if tomb is dead we return true so caller will fetch error with Next
+	// return true
+	return len(w.buffer) > 0 || !w.tomb.Alive() // if tomb is dead we return true so caller will fetch error with Next
 }
 
 func (w *CDCIterator) Next(ctx context.Context) (sdk.Record, error) {
@@ -90,16 +98,13 @@ func (w *CDCIterator) producer() error {
 		case <-w.ticker.C:
 			currentLastModified := w.lastModified
 
-			var maxResults int32 = 5
-
 			blobListPager := w.client.ListBlobsFlat(&azblob.ContainerListBlobsFlatOptions{
 				Marker:     w.nextKeyMarker,
-				MaxResults: &maxResults,
+				MaxResults: &w.maxResults,
 				Include: []azblob.ListBlobsIncludeItem{
 					azblob.ListBlobsIncludeItemDeleted,
 					azblob.ListBlobsIncludeItemSnapshots,
 					azblob.ListBlobsIncludeItemVersions,
-					azblob.ListBlobsIncludeItemTags,
 				},
 			})
 
@@ -116,7 +121,12 @@ func (w *CDCIterator) producer() error {
 					var output sdk.Record
 
 					if nil != item.Deleted && *item.Deleted {
-						output = w.createDeletedRecord(item)
+						var err error
+
+						output, err = w.createDeletedRecord(item)
+						if err != nil {
+							return err
+						}
 					} else {
 						blobClient, err := w.client.NewBlobClient(*item.Name)
 						if err != nil {
@@ -169,30 +179,40 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 		Type:      source.TypeCDC,
 	}
 
+	position, err := p.ToRecordPosition()
+	if err != nil {
+		return sdk.Record{}, err
+	}
+
 	return sdk.Record{
 		Metadata: map[string]string{
 			"content-type": *object.ContentType,
 		},
-		Position:  p.ToRecordPosition(),
+		Position:  position,
 		Payload:   sdk.RawData(rawBody),
 		Key:       sdk.RawData(p.Key),
 		CreatedAt: p.Timestamp,
 	}, nil
 }
 
-func (w *CDCIterator) createDeletedRecord(entry *azblob.BlobItemInternal) sdk.Record {
+func (w *CDCIterator) createDeletedRecord(entry *azblob.BlobItemInternal) (sdk.Record, error) {
 	p := source.Position{
 		Key:       *entry.Name,
 		Timestamp: *entry.Properties.LastModified,
 		Type:      source.TypeCDC,
 	}
 
+	position, err := p.ToRecordPosition()
+	if err != nil {
+		return sdk.Record{}, err
+	}
+
 	return sdk.Record{
 		Metadata: map[string]string{
 			"action": "delete",
 		},
-		Position:  p.ToRecordPosition(),
+		Position:  position,
 		Key:       sdk.RawData(p.Key),
 		CreatedAt: p.Timestamp,
-	}
+	}, nil
 }

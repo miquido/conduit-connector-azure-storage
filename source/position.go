@@ -17,10 +17,6 @@ package source
 import (
 	"bytes"
 	"encoding/gob"
-	"errors"
-	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	sdk "github.com/conduitio/conduit-connector-sdk"
@@ -31,12 +27,21 @@ const (
 	TypeCDC
 )
 
-const (
-	snapshotPrefixChar = 's'
-	cdcPrefixChar      = 'c'
-)
-
 type Type int
+
+func NewFromRecordPosition(p sdk.Position) (out Position, err error) {
+	var buffer bytes.Buffer
+
+	buffer.Write(p)
+
+	err = gob.NewDecoder(&buffer).Decode(&out)
+
+	return
+}
+
+func NewSnapshotPosition() Position {
+	return Position{Type: TypeSnapshot}
+}
 
 type Position struct {
 	Key       string
@@ -44,44 +49,12 @@ type Position struct {
 	Type      Type
 }
 
-func ParseRecordPosition(p sdk.Position) (Position, error) {
-	if p == nil {
-		// empty Position would have the fields with their default values
-		return Position{}, nil
-	}
-	s := string(p)
-	index := strings.LastIndex(s, "_")
-	if index == -1 {
-		return Position{}, errors.New("invalid position format, no '_' found")
-	}
-	seconds, err := strconv.ParseInt(s[index+2:], 10, 64)
-	if err != nil {
-		return Position{}, fmt.Errorf("could not parse the position timestamp: %w", err)
+func (p Position) ToRecordPosition() (sdk.Position, error) {
+	var buffer bytes.Buffer
+
+	if err := gob.NewEncoder(&buffer).Encode(p); err != nil {
+		return nil, err
 	}
 
-	if s[index+1] != cdcPrefixChar && s[index+1] != snapshotPrefixChar {
-		return Position{}, fmt.Errorf("invalid position format, no '%c' or '%c' after '_'", snapshotPrefixChar, cdcPrefixChar)
-	}
-	pType := TypeSnapshot
-	if s[index+1] == cdcPrefixChar {
-		pType = TypeCDC
-	}
-
-	return Position{
-		Key:       s[:index],
-		Timestamp: time.Unix(seconds, 0),
-		Type:      pType,
-	}, err
-}
-
-func (p Position) ToRecordPosition() sdk.Position {
-	var asd bytes.Buffer
-	_ = gob.NewEncoder(&asd).Encode(p)
-
-	return asd.Bytes()
-	// char := snapshotPrefixChar
-	// if p.Type == TypeCDC {
-	// 	char = cdcPrefixChar
-	// }
-	// return []byte(fmt.Sprintf("%s_%c%d", p.Key, char, p.Timestamp.Unix()))
+	return buffer.Bytes(), nil
 }

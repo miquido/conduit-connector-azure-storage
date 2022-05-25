@@ -16,6 +16,7 @@ package iterator
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -25,30 +26,22 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-type SnapshotIterator struct {
-	client          *azblob.ContainerClient
-	paginator       *azblob.ContainerListBlobFlatPager
-	maxLastModified time.Time
-	buffer          chan sdk.Record
-	finished        bool
-	tomb            tomb.Tomb
-}
+func NewSnapshotIterator(
+	client *azblob.ContainerClient,
+	p source.Position,
+	maxResults int32,
+) (*SnapshotIterator, error) {
+	if maxResults < 1 {
+		return nil, fmt.Errorf("maxResults is expected to be greater that or equal to 1, got %d", maxResults)
+	}
 
-func NewSnapshotIterator(client *azblob.ContainerClient, p source.Position, maxResults int32) (*SnapshotIterator, error) {
 	iterator := SnapshotIterator{
 		client: client,
 		paginator: client.ListBlobsFlat(&azblob.ContainerListBlobsFlatOptions{
 			MaxResults: &maxResults,
-			Include: []azblob.ListBlobsIncludeItem{
-				// azblob.ListBlobsIncludeItemDeleted,
-				azblob.ListBlobsIncludeItemSnapshots,
-				azblob.ListBlobsIncludeItemVersions,
-				// azblob.ListBlobsIncludeItemTags,
-			},
 		}),
 		maxLastModified: p.Timestamp,
 		buffer:          make(chan sdk.Record, 1),
-		finished:        false,
 		tomb:            tomb.Tomb{},
 	}
 
@@ -57,8 +50,16 @@ func NewSnapshotIterator(client *azblob.ContainerClient, p source.Position, maxR
 	return &iterator, nil
 }
 
+type SnapshotIterator struct {
+	client          *azblob.ContainerClient
+	paginator       *azblob.ContainerListBlobFlatPager
+	maxLastModified time.Time
+	buffer          chan sdk.Record
+	tomb            tomb.Tomb
+}
+
 func (w *SnapshotIterator) HasNext(_ context.Context) bool {
-	return !w.finished && w.tomb.Alive()
+	return w.tomb.Alive()
 }
 
 func (w *SnapshotIterator) Next(ctx context.Context) (sdk.Record, error) {
@@ -79,11 +80,7 @@ func (w *SnapshotIterator) Stop() {
 }
 
 func (w *SnapshotIterator) producer() error {
-	defer func() {
-		close(w.buffer)
-
-		w.finished = true
-	}()
+	defer close(w.buffer)
 
 worker:
 	for {
@@ -120,14 +117,19 @@ worker:
 					p := source.Position{
 						Key:       *item.Name,
 						Type:      source.TypeSnapshot,
-						Timestamp: w.maxLastModified,
+						Timestamp: *item.Properties.LastModified,
+					}
+
+					position, err := p.ToRecordPosition()
+					if err != nil {
+						return err
 					}
 
 					record := sdk.Record{
 						Metadata: map[string]string{
 							"content-type": *item.Properties.ContentType,
 						},
-						Position:  p.ToRecordPosition(),
+						Position:  position,
 						Payload:   sdk.RawData(rawBody),
 						Key:       sdk.RawData(*item.Name),
 						CreatedAt: *item.Properties.CreationTime,
