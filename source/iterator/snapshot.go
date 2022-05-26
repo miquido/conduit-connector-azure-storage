@@ -79,10 +79,10 @@ func (w *SnapshotIterator) Stop() {
 	_ = w.tomb.Killf("snapshot iterator is stopped")
 }
 
+// producer reads the container and reports all files found.
 func (w *SnapshotIterator) producer() error {
 	defer close(w.buffer)
 
-worker:
 	for {
 		select {
 		case <-w.tomb.Dying():
@@ -93,10 +93,12 @@ worker:
 				resp := w.paginator.PageResponse()
 
 				for _, item := range resp.Segment.BlobItems {
+					// Reject item when it wasn't modified since the last iteration
 					if w.maxLastModified.Before(*item.Properties.LastModified) {
 						w.maxLastModified = *item.Properties.LastModified
 					}
 
+					// Read the contents of the item
 					blobClient, err := w.client.NewBlobClient(*item.Name)
 					if err != nil {
 						return err
@@ -114,17 +116,15 @@ worker:
 						return err
 					}
 
-					p := position.Position{
-						Key:       *item.Name,
-						Type:      position.TypeSnapshot,
-						Timestamp: w.maxLastModified,
-					}
+					// Prepare the record position
+					p := position.NewSnapshotPosition(*item.Name, w.maxLastModified)
 
 					recordPosition, err := p.ToRecordPosition()
 					if err != nil {
 						return err
 					}
 
+					// Prepare the sdk.Record
 					record := sdk.Record{
 						Metadata: map[string]string{
 							"content-type": *item.Properties.ContentType,
@@ -135,25 +135,25 @@ worker:
 						CreatedAt: *item.Properties.CreationTime,
 					}
 
+					// Send out the record if possible
 					select {
-					case w.buffer <- record:
-						//
-
 					case <-w.tomb.Dying():
 						return w.tomb.Err()
+
+					case w.buffer <- record:
+						// sdk.Record was sent successfully
 					}
 				}
 
 				continue
 			}
 
+			// Report a storage reading error
 			if err := w.paginator.Err(); err != nil {
 				return err
 			}
 
-			break worker
+			return nil
 		}
 	}
-
-	return nil
 }

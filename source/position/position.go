@@ -29,11 +29,14 @@ const (
 
 type Type int
 
+// NewFromRecordPosition creates a new Position by decoding sdk.Position.
 func NewFromRecordPosition(recordPosition sdk.Position) (out Position, err error) {
+	// Empty record position results in empty snapshot Position
 	if recordPosition == nil {
-		return
+		return NewDefaultSnapshotPosition(), nil
 	}
 
+	// Try to decode record position into Position
 	var buffer bytes.Buffer
 
 	buffer.Write(recordPosition)
@@ -43,16 +46,37 @@ func NewFromRecordPosition(recordPosition sdk.Position) (out Position, err error
 	return
 }
 
-func NewSnapshotPosition() Position {
+// NewDefaultSnapshotPosition creates a new Position object with Position.Type set to TypeSnapshot, empty Position.Key and Position.Timestamp set to zero value.
+func NewDefaultSnapshotPosition() Position {
 	return Position{Type: TypeSnapshot}
 }
 
+// NewSnapshotPosition creates a new Position object with Position.Type set to TypeSnapshot and other properties filled with given values.
+func NewSnapshotPosition(key string, timestamp time.Time) Position {
+	return Position{
+		Key:       key,
+		Timestamp: timestamp,
+		Type:      TypeSnapshot,
+	}
+}
+
+// NewCDCPosition creates a new Position object with Position.Type set to TypeCDC and other properties filled with given values.
+func NewCDCPosition(key string, timestamp time.Time) Position {
+	return Position{
+		Key:       key,
+		Timestamp: timestamp,
+		Type:      TypeCDC,
+	}
+}
+
+// Position represents blob item position metadata.
 type Position struct {
 	Key       string
 	Timestamp time.Time
 	Type      Type
 }
 
+// ToRecordPosition converts Position into sdk.Position.
 func (p Position) ToRecordPosition() (sdk.Position, error) {
 	var buffer bytes.Buffer
 

@@ -86,6 +86,7 @@ func (w *CDCIterator) Stop() {
 	w.tomb.Kill(errors.New("CDC iterator is stopped"))
 }
 
+// producer reads the container and reports all file changes since last time.
 func (w *CDCIterator) producer() error {
 	defer close(w.buffer)
 
@@ -97,13 +98,12 @@ func (w *CDCIterator) producer() error {
 		case <-w.ticker.C:
 			currentLastModified := w.lastModified
 
+			// Prepare the storage iterator
 			blobListPager := w.client.ListBlobsFlat(&azblob.ContainerListBlobsFlatOptions{
 				Marker:     w.nextKeyMarker,
 				MaxResults: &w.maxResults,
 				Include: []azblob.ListBlobsIncludeItem{
 					azblob.ListBlobsIncludeItemDeleted,
-					azblob.ListBlobsIncludeItemSnapshots,
-					azblob.ListBlobsIncludeItemVersions,
 				},
 			})
 
@@ -113,10 +113,12 @@ func (w *CDCIterator) producer() error {
 				for _, item := range resp.Segment.BlobItems {
 					itemLastModificationDate := *item.Properties.LastModified
 
+					// Reject item when it wasn't modified since the last iteration
 					if itemLastModificationDate.Before(w.lastModified) {
 						continue
 					}
 
+					// Prepare the sdk.Record
 					var output sdk.Record
 
 					if nil != item.Deleted && *item.Deleted {
@@ -143,20 +145,23 @@ func (w *CDCIterator) producer() error {
 						}
 					}
 
+					// Send out the record if possible
 					select {
+					case <-w.tomb.Dying():
+						return w.tomb.Err()
+
 					case w.buffer <- output:
 						if currentLastModified.Before(itemLastModificationDate) {
 							currentLastModified = itemLastModificationDate
 						}
-
-					case <-w.tomb.Dying():
-						return w.tomb.Err()
 					}
 				}
 			}
 
+			// Update times
 			w.lastModified = currentLastModified.Add(time.Nanosecond)
 
+			// Report a storage reading error
 			if err := blobListPager.Err(); err != nil {
 				return err
 			}
@@ -164,7 +169,9 @@ func (w *CDCIterator) producer() error {
 	}
 }
 
+// createUpsertedRecord converts blob item into sdk.Record with item's contents or returns error when failure.
 func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, object azblob.BlobDownloadResponse) (sdk.Record, error) {
+	// Try to read item's contents
 	rawBody, err := ioutil.ReadAll(object.Body(&azblob.RetryReaderOptions{
 		MaxRetryRequests: 0,
 	}))
@@ -172,17 +179,15 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 		return sdk.Record{}, err
 	}
 
-	p := position.Position{
-		Key:       *entry.Name,
-		Timestamp: *entry.Properties.LastModified,
-		Type:      position.TypeCDC,
-	}
+	// Prepare position information
+	p := position.NewCDCPosition(*entry.Name, *entry.Properties.LastModified)
 
 	recordPosition, err := p.ToRecordPosition()
 	if err != nil {
 		return sdk.Record{}, err
 	}
 
+	// Return the record
 	return sdk.Record{
 		Metadata: map[string]string{
 			"content-type": *object.ContentType,
@@ -194,18 +199,17 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 	}, nil
 }
 
+// createDeletedRecord converts blob item into sdk.Record indicating that item was removed or returns error when failure.
 func (w *CDCIterator) createDeletedRecord(entry *azblob.BlobItemInternal) (sdk.Record, error) {
-	p := position.Position{
-		Key:       *entry.Name,
-		Timestamp: *entry.Properties.LastModified,
-		Type:      position.TypeCDC,
-	}
+	// Prepare position information
+	p := position.NewCDCPosition(*entry.Name, *entry.Properties.LastModified)
 
 	recordPosition, err := p.ToRecordPosition()
 	if err != nil {
 		return sdk.Record{}, err
 	}
 
+	// Return the record
 	return sdk.Record{
 		Metadata: map[string]string{
 			"action": "delete",

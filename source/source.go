@@ -76,7 +76,7 @@ func (s *Source) Open(ctx context.Context, rp sdk.Position) error {
 	// Parse position to start from
 	recordPosition, err := position.NewFromRecordPosition(rp)
 	if err != nil {
-		return err
+		return fmt.Errorf("connector open error: invalid or unsupported position: %w", err)
 	}
 
 	// Create container's items iterator

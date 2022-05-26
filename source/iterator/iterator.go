@@ -21,7 +21,13 @@ import (
 )
 
 type Iterator interface {
+	// HasNext indicates whether there is new sdk.Record available (`true`) or not (`false`)
 	HasNext(ctx context.Context) bool
+
+	// Next returns new sdk.Record while reading the container or error when operation failed
 	Next(ctx context.Context) (sdk.Record, error)
+
+	// Stop informs the iterator to stop processing new records.
+	// All currently ongoing operations should be gracefully shut down.
 	Stop()
 }

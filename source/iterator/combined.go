@@ -52,7 +52,7 @@ func NewCombinedIterator(
 			fmt.Printf("Warning: got position: %+v, snapshot will be restarted from the beginning of the bucket\n", p)
 		}
 
-		p = position.NewSnapshotPosition() // always start snapshot from the beginning, so position is nil
+		p = position.NewDefaultSnapshotPosition() // always start snapshot from the beginning, so position is nil
 
 		c.snapshotIterator, err = NewSnapshotIterator(client, p, maxResults)
 		if err != nil {
@@ -75,12 +75,10 @@ func NewCombinedIterator(
 func (c *CombinedIterator) HasNext(ctx context.Context) bool {
 	switch {
 	case c.snapshotIterator != nil:
-		// case of empty bucket or end of bucket
+		// Case of empty bucket or end of bucket
 		if !c.snapshotIterator.HasNext(ctx) {
-			err := c.switchToCDCIterator()
-			if err != nil {
-				return false
-			}
+			// Skip error handling since either the case leads to returning false
+			_ = c.switchToCDCIterator()
 
 			return false
 		}
@@ -137,6 +135,8 @@ func (c *CombinedIterator) Stop() {
 	}
 }
 
+// switchToCDCIterator switches the current iterator form Snapshot to CDC.
+// Also, Snapshot iterator is stopped.
 func (c *CombinedIterator) switchToCDCIterator() (err error) {
 	timestamp := c.snapshotIterator.maxLastModified
 
@@ -150,11 +150,13 @@ func (c *CombinedIterator) switchToCDCIterator() (err error) {
 		return fmt.Errorf("could not create cdc iterator: %w", err)
 	}
 
+	c.snapshotIterator.Stop()
 	c.snapshotIterator = nil
 
 	return nil
 }
 
+// convertToCDCPosition changes Position type to CDC
 func convertToCDCPosition(p sdk.Position) (sdk.Position, error) {
 	cdcPos, err := position.NewFromRecordPosition(p)
 	if err != nil {

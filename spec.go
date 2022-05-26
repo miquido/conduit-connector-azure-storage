@@ -34,12 +34,12 @@ func Specification() sdk.Specification {
 			source.ConfigKeyConnectionString: {
 				Default:     "",
 				Required:    true,
-				Description: "The Azure Blob connection string.",
+				Description: "The Azure Storage connection string.",
 			},
 			source.ConfigKeyContainerName: {
 				Default:     "",
 				Required:    true,
-				Description: "The name of the container to watch.",
+				Description: "The name of the container to monitor.",
 			},
 			source.ConfigKeyPollingPeriod: {
 				Default:     source.DefaultPollingPeriod,
@@ -49,7 +49,7 @@ func Specification() sdk.Specification {
 			source.ConfigKeyMaxResults: {
 				Default:     strconv.FormatInt(int64(source.DefaultMaxResults), 32),
 				Required:    false,
-				Description: "The maximum number of items per page when reading container's items.",
+				Description: "The maximum number of items, per page, when reading container's items.",
 			},
 		},
 	}
