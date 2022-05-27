@@ -5,6 +5,8 @@ go 1.18
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.4.1
 	github.com/conduitio/conduit-connector-sdk v0.2.0
+	github.com/jaswdr/faker v1.10.2
+	github.com/stretchr/testify v1.7.1
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 )
 
@@ -12,6 +14,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.0.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.0.0 // indirect
 	github.com/conduitio/conduit-connector-protocol v0.2.0 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
@@ -23,6 +26,7 @@ require (
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/oklog/run v1.1.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rs/zerolog v1.26.1 // indirect
 	go.buf.build/library/go-grpc/conduitio/conduit-connector-protocol v1.4.1 // indirect
 	golang.org/x/net v0.0.0-20220524220425-1d687d428aca // indirect
@@ -31,4 +35,5 @@ require (
 	google.golang.org/genproto v0.0.0-20220525015930-6ca3db687a9d // indirect
 	google.golang.org/grpc v1.46.2 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
+	gopkg.in/yaml.v3 v3.0.0 // indirect
 )

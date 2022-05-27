@@ -44,6 +44,14 @@ func ParseConfig(cfgRaw map[string]string) (_ Config, err error) {
 		ContainerName:    cfgRaw[ConfigKeyContainerName],
 	}
 
+	if cfg.ConnectionString == "" {
+		return Config{}, requiredConfigErr(ConfigKeyConnectionString)
+	}
+
+	if cfg.ContainerName == "" {
+		return Config{}, requiredConfigErr(ConfigKeyContainerName)
+	}
+
 	if cfg.PollingPeriod, err = parsePollingPeriod(cfgRaw); err != nil {
 		return Config{}, err
 	}
@@ -53,6 +61,10 @@ func ParseConfig(cfgRaw map[string]string) (_ Config, err error) {
 	}
 
 	return cfg, nil
+}
+
+func requiredConfigErr(name string) error {
+	return fmt.Errorf("%q config value must be set", name)
 }
 
 func parsePollingPeriod(cfgRaw map[string]string) (time.Duration, error) {
@@ -90,10 +102,10 @@ func parseMaxResults(cfgRaw map[string]string) (int32, error) {
 		return 0, fmt.Errorf("failed to parse %q config value: %w", ConfigKeyMaxResults, err)
 	}
 	if maxResultsParsed <= 0 {
-		return 0, fmt.Errorf("failed to parse %q config value: value must be greater than 0", ConfigKeyMaxResults)
+		return 0, fmt.Errorf("failed to parse %q config value: value must be greater than 0, %d provided", ConfigKeyMaxResults, maxResultsParsed)
 	}
 	if maxResultsParsed > 5_000 {
-		return 0, fmt.Errorf("failed to parse %q config value: value must not be grater than 5 000", ConfigKeyMaxResults)
+		return 0, fmt.Errorf("failed to parse %q config value: value must not be grater than 5000, %d provided", ConfigKeyMaxResults, maxResultsParsed)
 	}
 
 	return int32(maxResultsParsed), nil
