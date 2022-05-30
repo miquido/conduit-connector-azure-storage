@@ -32,7 +32,7 @@ func NewSnapshotIterator(
 	maxResults int32,
 ) (*SnapshotIterator, error) {
 	if maxResults < 1 {
-		return nil, fmt.Errorf("maxResults is expected to be greater that or equal to 1, got %d", maxResults)
+		return nil, fmt.Errorf("maxResults is expected to be greater than or equal to 1, got %d", maxResults)
 	}
 
 	iterator := SnapshotIterator{
