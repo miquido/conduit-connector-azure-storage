@@ -59,7 +59,7 @@ type SnapshotIterator struct {
 }
 
 func (w *SnapshotIterator) HasNext(_ context.Context) bool {
-	return w.tomb.Alive()
+	return w.tomb.Alive() || len(w.buffer) > 0
 }
 
 func (w *SnapshotIterator) Next(ctx context.Context) (sdk.Record, error) {

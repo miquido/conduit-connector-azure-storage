@@ -18,58 +18,31 @@ package source
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	sdk "github.com/conduitio/conduit-connector-sdk"
 	"github.com/jaswdr/faker"
-	"github.com/stretchr/testify/assert"
+	helper "github.com/miquido/conduit-connector-azure-storage/test"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSource(t *testing.T) {
+	ctx := context.Background()
 	fakerInstance := faker.New()
 
 	var (
-		accountName      = "devstoreaccount1"
-		accountKey       = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
-		blobEndpoint     = fmt.Sprintf("http://127.0.0.1:10000/%s", accountName)
-		connectionString = fmt.Sprintf(
-			"DefaultEndpointsProtocol=%s;AccountName=%s;AccountKey=%s;BlobEndpoint=%s",
-			"http",
-			accountName,
-			accountKey,
-			blobEndpoint,
-		)
 		containerName = "foo"
 
 		cfgRaw = map[string]string{
-			ConfigKeyConnectionString: connectionString,
+			ConfigKeyConnectionString: helper.GetConnectionString(),
 			ConfigKeyContainerName:    containerName,
 			ConfigKeyPollingPeriod:    "1500ms",
 			ConfigKeyMaxResults:       "1",
 		}
 	)
 
-	ctx := context.Background()
-
-	serviceClient, err := azblob.NewServiceClientFromConnectionString(connectionString, nil)
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_, _ = serviceClient.DeleteContainer(ctx, containerName, nil)
-	})
-
-	_, err = serviceClient.CreateContainer(ctx, containerName, nil)
-	require.NoError(t, err)
-
-	containerClient, err := serviceClient.NewContainerClient(containerName)
-	require.NoError(t, err)
+	containerClient := helper.PrepareContainer(t, helper.NewAzureBlobServiceClient(), containerName)
 
 	var (
 		alreadyExistingBlob1Name        = "already-existing-1.txt"
@@ -87,8 +60,8 @@ func TestSource(t *testing.T) {
 
 	_, _, _ = createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents
 
-	createBlob(t, ctx, containerClient, alreadyExistingBlob1Name, alreadyExistingBlob1ContentType, alreadyExistingBlob1Contents)
-	createBlob(t, ctx, containerClient, alreadyExistingBlob2Name, alreadyExistingBlob2ContentType, alreadyExistingBlob2Contents)
+	require.NoError(t, helper.CreateBlob(containerClient, alreadyExistingBlob1Name, alreadyExistingBlob1ContentType, alreadyExistingBlob1Contents))
+	require.NoError(t, helper.CreateBlob(containerClient, alreadyExistingBlob2Name, alreadyExistingBlob2ContentType, alreadyExistingBlob2Contents))
 
 	time.Sleep(time.Second)
 
@@ -103,71 +76,46 @@ func TestSource(t *testing.T) {
 
 	t.Run("Firstly, snapshot iterator runs and reads all blobs", func(t *testing.T) {
 		// Read the first record from the first page
-		rerecord1, err := src.Read(ctx)
+		record1, err := src.Read(ctx)
 		require.NoError(t, err)
-		require.True(t, assertRecordEquals(t, rerecord1, alreadyExistingBlob1Name, alreadyExistingBlob1ContentType, alreadyExistingBlob1Contents))
-		require.NoError(t, src.Ack(ctx, rerecord1.Position))
+		require.True(t, helper.AssertRecordEquals(t, record1, alreadyExistingBlob1Name, alreadyExistingBlob1ContentType, alreadyExistingBlob1Contents))
+		require.NoError(t, src.Ack(ctx, record1.Position))
 
 		// Read the second record from the second page
-		rerecord2, err := src.Read(ctx)
+		record2, err := src.Read(ctx)
 		require.NoError(t, err)
-		require.True(t, assertRecordEquals(t, rerecord2, alreadyExistingBlob2Name, alreadyExistingBlob2ContentType, alreadyExistingBlob2Contents))
-		require.NoError(t, src.Ack(ctx, rerecord2.Position))
+		require.True(t, helper.AssertRecordEquals(t, record2, alreadyExistingBlob2Name, alreadyExistingBlob2ContentType, alreadyExistingBlob2Contents))
+		require.NoError(t, src.Ack(ctx, record2.Position))
 
 		// No third record available, backoff
 		// By this time, combined iterator should switch from snapshot to CDC iterator
-		rerecord3, err := src.Read(ctx)
-		require.Equal(t, sdk.Record{}, rerecord3)
+		record3, err := src.Read(ctx)
+		require.Equal(t, sdk.Record{}, record3)
 		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
 	})
 
 	t.Run("Secondly, CDC iterator runs and reads all blobs created meanwhile", func(t *testing.T) {
 		// Create file while snapshot iterator is working
 		// This file should not be included in the results
-		createBlob(t, ctx, containerClient, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents)
+		require.NoError(t, helper.CreateBlob(containerClient, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
 
 		// No new record is available until 1 polling period passes
-		rerecord1, err := src.Read(ctx)
-		require.Equal(t, sdk.Record{}, rerecord1)
+		record1, err := src.Read(ctx)
+		require.Equal(t, sdk.Record{}, record1)
 		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
 
 		// Polling Period is 1.5s
 		time.Sleep(time.Second * 2)
 
 		// Read the first record polled
-		rerecord2, err := src.Read(ctx)
+		record2, err := src.Read(ctx)
 		require.NoError(t, err)
-		require.True(t, assertRecordEquals(t, rerecord2, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
-		require.NoError(t, src.Ack(ctx, rerecord2.Position))
+		require.True(t, helper.AssertRecordEquals(t, record2, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
+		require.NoError(t, src.Ack(ctx, record2.Position))
 
 		// Read the second record polled
-		rerecord3, err := src.Read(ctx)
-		require.Equal(t, sdk.Record{}, rerecord3)
+		record3, err := src.Read(ctx)
+		require.Equal(t, sdk.Record{}, record3)
 		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
 	})
-}
-
-func createBlob(
-	t *testing.T,
-	ctx context.Context,
-	containerClient *azblob.ContainerClient,
-	blobName, contentType, contents string,
-) {
-	blockBlobClient, err := containerClient.NewBlockBlobClient(blobName)
-	require.NoError(t, err)
-
-	requestBody := streaming.NopCloser(strings.NewReader(contents))
-	_, err = blockBlobClient.Upload(ctx, requestBody, &azblob.BlockBlobUploadOptions{
-		HTTPHeaders: &azblob.BlobHTTPHeaders{
-			BlobContentType:        to.Ptr(contentType),
-			BlobContentDisposition: to.Ptr("attachment"),
-		},
-	})
-	require.NoError(t, err)
-}
-
-func assertRecordEquals(t *testing.T, read sdk.Record, fileName, contentType, contents string) bool {
-	return assert.Equal(t, fileName, string(read.Key.Bytes()), "Record name does not match.") &&
-		assert.Equal(t, contentType, read.Metadata["content-type"], "Record's content-type metadata does not match.") &&
-		assert.Equal(t, contents, string(read.Payload.Bytes()), "Record payload does not match.")
 }
