@@ -34,3 +34,29 @@ func TestNewCombinedIterator(t *testing.T) {
 		require.EqualError(t, err, "invalid position type (2)")
 	})
 }
+
+func TestCombinedIterator_Stop(t *testing.T) {
+	t.Run("Skips stopping iterator when it is not set", func(t *testing.T) {
+		iterator := CombinedIterator{
+			iterator: nil,
+		}
+
+		require.Nil(t, iterator.iterator)
+		iterator.Stop()
+		require.Nil(t, iterator.iterator)
+	})
+
+	t.Run("Stops iterator when it is set", func(t *testing.T) {
+		iteratorMock := IteratorMock{
+			StopFunc: func() {},
+		}
+
+		iterator := CombinedIterator{
+			iterator: &iteratorMock,
+		}
+
+		iterator.Stop()
+		require.Nil(t, iterator.iterator)
+		require.Len(t, iteratorMock.StopCalls(), 1)
+	})
+}

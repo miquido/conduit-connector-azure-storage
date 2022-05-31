@@ -103,12 +103,6 @@ func (c *CombinedIterator) Next(ctx context.Context) (sdk.Record, error) {
 		}
 
 		if !c.iterator.HasNext(ctx) {
-			// // Switch to CDC iterator
-			// err := c.switchToCDCIterator()
-			// if err != nil {
-			// 	return sdk.Record{}, err
-			// }
-
 			// Change the last record's position to CDC
 			r.Position, err = convertToCDCPosition(r.Position)
 			if err != nil {
