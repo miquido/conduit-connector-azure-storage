@@ -44,15 +44,13 @@ func TestCombinedIterator(t *testing.T) {
 		// Let the Goroutine finish
 		time.Sleep(time.Second)
 
-		require.NotNil(t, iterator.snapshotIterator)
-		require.Nil(t, iterator.cdcIterator)
+		require.IsType(t, &SnapshotIterator{}, iterator.iterator)
 
 		// No blobs were found
 		require.False(t, iterator.HasNext(ctx))
 
 		// Iterators were swapped
-		require.Nil(t, iterator.snapshotIterator)
-		require.NotNil(t, iterator.cdcIterator)
+		require.IsType(t, &CDCIterator{}, iterator.iterator)
 	})
 
 	t.Run("When snapshot iterator finishes, iterator is switched to CDC", func(t *testing.T) {
@@ -81,15 +79,13 @@ func TestCombinedIterator(t *testing.T) {
 
 		require.True(t, iterator.HasNext(ctx))
 		record1, err := iterator.Next(ctx)
-		require.NotNil(t, iterator.snapshotIterator)
-		require.Nil(t, iterator.cdcIterator)
+		require.IsType(t, &SnapshotIterator{}, iterator.iterator)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record1, record1Name, "text/plain", record1Contents))
 
 		require.True(t, iterator.HasNext(ctx))
 		record2, err := iterator.Next(ctx)
-		require.NotNil(t, iterator.snapshotIterator)
-		require.Nil(t, iterator.cdcIterator)
+		require.IsType(t, &SnapshotIterator{}, iterator.iterator)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record2, record2Name, "text/plain", record2Contents))
 
@@ -98,21 +94,18 @@ func TestCombinedIterator(t *testing.T) {
 
 		// Iterators were swapped
 		require.False(t, iterator.HasNext(ctx))
-		require.Nil(t, iterator.snapshotIterator)
-		require.NotNil(t, iterator.cdcIterator)
+		require.IsType(t, &CDCIterator{}, iterator.iterator)
 
 		// Let the Pooling Period pass and iterator to collect blobs
 		time.Sleep(time.Millisecond * 500)
 
 		require.True(t, iterator.HasNext(ctx))
 		record3, err := iterator.Next(ctx)
-		require.Nil(t, iterator.snapshotIterator)
-		require.NotNil(t, iterator.cdcIterator)
+		require.IsType(t, &CDCIterator{}, iterator.iterator)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record3, record3Name, "text/plain", record3Contents))
 
 		require.False(t, iterator.HasNext(ctx))
-		require.Nil(t, iterator.snapshotIterator)
-		require.NotNil(t, iterator.cdcIterator)
+		require.IsType(t, &CDCIterator{}, iterator.iterator)
 	})
 }

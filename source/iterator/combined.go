@@ -25,13 +25,14 @@ import (
 	"github.com/miquido/conduit-connector-azure-storage/source/position"
 )
 
-type CombinedIterator struct {
-	snapshotIterator *SnapshotIterator
-	cdcIterator      *CDCIterator
+var ErrUnsupportedIterator = errors.New("unsupported iterator")
 
+type CombinedIterator struct {
 	pollingPeriod time.Duration
 	client        *azblob.ContainerClient
 	maxResults    int32
+
+	iterator Iterator
 }
 
 func NewCombinedIterator(
@@ -54,13 +55,13 @@ func NewCombinedIterator(
 
 		p = position.NewDefaultSnapshotPosition() // always start snapshot from the beginning, so position is nil
 
-		c.snapshotIterator, err = NewSnapshotIterator(client, p, maxResults)
+		c.iterator, err = NewSnapshotIterator(client, p, maxResults)
 		if err != nil {
 			return nil, fmt.Errorf("could not create the snapshot iterator: %w", err)
 		}
 
 	case position.TypeCDC:
-		c.cdcIterator, err = NewCDCIterator(pollingPeriod, client, p.Timestamp, maxResults)
+		c.iterator, err = NewCDCIterator(pollingPeriod, client, p.Timestamp, maxResults)
 		if err != nil {
 			return nil, fmt.Errorf("could not create the CDC iterator: %w", err)
 		}
@@ -73,10 +74,10 @@ func NewCombinedIterator(
 }
 
 func (c *CombinedIterator) HasNext(ctx context.Context) bool {
-	switch {
-	case c.snapshotIterator != nil:
+	switch c.iterator.(type) {
+	case *SnapshotIterator:
 		// Case of empty bucket or end of bucket
-		if !c.snapshotIterator.HasNext(ctx) {
+		if !c.iterator.HasNext(ctx) {
 			// Skip error handling since either the case leads to returning false
 			_ = c.switchToCDCIterator()
 
@@ -85,8 +86,8 @@ func (c *CombinedIterator) HasNext(ctx context.Context) bool {
 
 		return true
 
-	case c.cdcIterator != nil:
-		return c.cdcIterator.HasNext(ctx)
+	case *CDCIterator:
+		return c.iterator.HasNext(ctx)
 
 	default:
 		return false
@@ -94,14 +95,14 @@ func (c *CombinedIterator) HasNext(ctx context.Context) bool {
 }
 
 func (c *CombinedIterator) Next(ctx context.Context) (sdk.Record, error) {
-	switch {
-	case c.snapshotIterator != nil:
-		r, err := c.snapshotIterator.Next(ctx)
+	switch c.iterator.(type) {
+	case *SnapshotIterator:
+		r, err := c.iterator.Next(ctx)
 		if err != nil {
 			return sdk.Record{}, err
 		}
 
-		if !c.snapshotIterator.HasNext(ctx) {
+		if !c.iterator.HasNext(ctx) {
 			// // Switch to CDC iterator
 			// err := c.switchToCDCIterator()
 			// if err != nil {
@@ -117,49 +118,48 @@ func (c *CombinedIterator) Next(ctx context.Context) (sdk.Record, error) {
 
 		return r, nil
 
-	case c.cdcIterator != nil:
-		return c.cdcIterator.Next(ctx)
+	case *CDCIterator:
+		return c.iterator.Next(ctx)
 
 	default:
-		return sdk.Record{}, errors.New("no initialized iterator")
+		return sdk.Record{}, ErrUnsupportedIterator
 	}
 }
 
 func (c *CombinedIterator) Stop() {
-	if c.cdcIterator != nil {
-		c.cdcIterator.Stop()
-		c.cdcIterator = nil
-	}
-
-	if c.snapshotIterator != nil {
-		c.snapshotIterator.Stop()
-		c.snapshotIterator = nil
+	if c.iterator != nil {
+		c.iterator.Stop()
+		c.iterator = nil
 	}
 }
 
 // switchToCDCIterator switches the current iterator form Snapshot to CDC.
 // Also, Snapshot iterator is stopped.
 func (c *CombinedIterator) switchToCDCIterator() (err error) {
-	if c.snapshotIterator == nil {
+	switch i := c.iterator.(type) {
+	case *SnapshotIterator:
+		timestamp := i.maxLastModified
+
+		// Zero timestamp means nil position (empty bucket), so start detecting actions from now
+		if timestamp.IsZero() {
+			timestamp = time.Now()
+		}
+
+		i.Stop()
+
+		c.iterator, err = NewCDCIterator(c.pollingPeriod, c.client, timestamp.Add(time.Nanosecond), c.maxResults)
+		if err != nil {
+			return fmt.Errorf("could not create cdc iterator: %w", err)
+		}
+
 		return nil
+
+	case *CDCIterator:
+		return nil
+
+	default:
+		return ErrUnsupportedIterator
 	}
-
-	timestamp := c.snapshotIterator.maxLastModified
-
-	// Zero timestamp means nil position (empty bucket), so start detecting actions from now
-	if timestamp.IsZero() {
-		timestamp = time.Now()
-	}
-
-	c.cdcIterator, err = NewCDCIterator(c.pollingPeriod, c.client, timestamp.Add(time.Nanosecond), c.maxResults)
-	if err != nil {
-		return fmt.Errorf("could not create cdc iterator: %w", err)
-	}
-
-	c.snapshotIterator.Stop()
-	c.snapshotIterator = nil
-
-	return nil
 }
 
 // convertToCDCPosition changes Position type to CDC
