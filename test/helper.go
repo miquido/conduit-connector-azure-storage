@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// https://docs.microsoft.com/en-us/azure/storage/common/storage-use-azurite?tabs=docker-hub#well-known-storage-account-and-key
 const (
 	defaultEndpointsProtocol = "http"
 	accountName              = "devstoreaccount1"
@@ -39,6 +40,7 @@ var (
 	azureBlobServiceClient          *azblob.ServiceClient
 	createNewAzureBlobServiceClient sync.Once
 
+	// https://docs.microsoft.com/en-us/azure/storage/common/storage-use-azurite?tabs=docker-hub#http-connection-strings
 	connectionString = fmt.Sprintf(
 		"DefaultEndpointsProtocol=%s;AccountName=%s;AccountKey=%s;BlobEndpoint=%s",
 		defaultEndpointsProtocol,
