@@ -43,7 +43,7 @@ func TestSnapshotIterator(t *testing.T) {
 		require.NoError(t, err)
 
 		// Let the Goroutine finish
-		time.Sleep(time.Second)
+		require.NoError(t, iterator.tomb.Wait())
 
 		// No blobs were found
 		require.False(t, iterator.HasNext(ctx))
@@ -91,7 +91,7 @@ func TestSnapshotIterator(t *testing.T) {
 			require.True(t, helper.AssertRecordEquals(t, record2, record2Name, "text/plain", record2Contents))
 
 			// Let the Goroutine finish
-			time.Sleep(time.Millisecond * 500)
+			require.NoError(t, iterator.tomb.Wait())
 
 			require.False(t, iterator.HasNext(ctx))
 			record3, err := iterator.Next(ctx)
@@ -140,7 +140,7 @@ func TestSnapshotIterator(t *testing.T) {
 		require.True(t, helper.AssertRecordEquals(t, record3, record3Name, "text/plain", record3Contents))
 
 		// Let the Goroutine finish
-		time.Sleep(time.Millisecond * 500)
+		require.NoError(t, iterator.tomb.Wait())
 
 		require.False(t, iterator.HasNext(ctx))
 		record4, err := iterator.Next(ctx)
@@ -187,7 +187,7 @@ func TestSnapshotIterator(t *testing.T) {
 			}
 		}
 
-		require.EqualError(t, errN, "snapshot iterator is stopped")
+		require.ErrorIs(t, errN, ErrSnapshotIteratorIsStopped)
 		require.Equal(t, sdk.Record{}, recordN)
 	})
 

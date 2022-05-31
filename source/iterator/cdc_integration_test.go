@@ -182,7 +182,7 @@ func TestCDCIterator(t *testing.T) {
 			}
 		}
 
-		require.EqualError(t, errN, "CDC iterator is stopped")
+		require.ErrorIs(t, errN, ErrCDCIteratorIsStopped)
 		require.Equal(t, sdk.Record{}, recordN)
 	})
 

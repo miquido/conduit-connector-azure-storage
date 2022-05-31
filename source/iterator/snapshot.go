@@ -16,6 +16,7 @@ package iterator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"time"
@@ -25,6 +26,8 @@ import (
 	"github.com/miquido/conduit-connector-azure-storage/source/position"
 	"gopkg.in/tomb.v2"
 )
+
+var ErrSnapshotIteratorIsStopped = errors.New("snapshot iterator is stopped")
 
 func NewSnapshotIterator(
 	client *azblob.ContainerClient,
@@ -76,7 +79,7 @@ func (w *SnapshotIterator) Next(ctx context.Context) (sdk.Record, error) {
 }
 
 func (w *SnapshotIterator) Stop() {
-	_ = w.tomb.Killf("snapshot iterator is stopped")
+	w.tomb.Kill(ErrSnapshotIteratorIsStopped)
 }
 
 // producer reads the container and reports all files found.

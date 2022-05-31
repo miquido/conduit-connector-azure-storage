@@ -27,6 +27,8 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
+var ErrCDCIteratorIsStopped = errors.New("CDC iterator is stopped")
+
 func NewCDCIterator(
 	pollingPeriod time.Duration,
 	client *azblob.ContainerClient,
@@ -83,7 +85,7 @@ func (w *CDCIterator) Next(ctx context.Context) (sdk.Record, error) {
 
 func (w *CDCIterator) Stop() {
 	w.ticker.Stop()
-	w.tomb.Kill(errors.New("CDC iterator is stopped"))
+	w.tomb.Kill(ErrCDCIteratorIsStopped)
 }
 
 // producer reads the container and reports all file changes since last time.

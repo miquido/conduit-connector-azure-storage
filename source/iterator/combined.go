@@ -102,11 +102,11 @@ func (c *CombinedIterator) Next(ctx context.Context) (sdk.Record, error) {
 		}
 
 		if !c.snapshotIterator.HasNext(ctx) {
-			// Switch to CDC iterator
-			err := c.switchToCDCIterator()
-			if err != nil {
-				return sdk.Record{}, err
-			}
+			// // Switch to CDC iterator
+			// err := c.switchToCDCIterator()
+			// if err != nil {
+			// 	return sdk.Record{}, err
+			// }
 
 			// Change the last record's position to CDC
 			r.Position, err = convertToCDCPosition(r.Position)
@@ -128,16 +128,22 @@ func (c *CombinedIterator) Next(ctx context.Context) (sdk.Record, error) {
 func (c *CombinedIterator) Stop() {
 	if c.cdcIterator != nil {
 		c.cdcIterator.Stop()
+		c.cdcIterator = nil
 	}
 
 	if c.snapshotIterator != nil {
 		c.snapshotIterator.Stop()
+		c.snapshotIterator = nil
 	}
 }
 
 // switchToCDCIterator switches the current iterator form Snapshot to CDC.
 // Also, Snapshot iterator is stopped.
 func (c *CombinedIterator) switchToCDCIterator() (err error) {
+	if c.snapshotIterator == nil {
+		return nil
+	}
+
 	timestamp := c.snapshotIterator.maxLastModified
 
 	// Zero timestamp means nil position (empty bucket), so start detecting actions from now

@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	sdk "github.com/conduitio/conduit-connector-sdk"
@@ -96,6 +97,12 @@ func (s *Source) Read(ctx context.Context) (sdk.Record, error) {
 	record, err := s.iterator.Next(ctx)
 	if err != nil {
 		return sdk.Record{}, fmt.Errorf("read error: %w", err)
+	}
+
+	// Case when new record could not be produced but no error was thrown at the same time
+	// E.g.: goroutine stopped and w.tomb.Err() returned empty record and nil error
+	if reflect.DeepEqual(record, sdk.Record{}) {
+		return sdk.Record{}, sdk.ErrBackoffRetry
 	}
 
 	return record, nil
