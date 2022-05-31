@@ -58,8 +58,6 @@ func TestSource(t *testing.T) {
 		createdWhileWorking1Contents    = fakerInstance.Lorem().Sentence(16)
 	)
 
-	_, _, _ = createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents
-
 	require.NoError(t, helper.CreateBlob(containerClient, alreadyExistingBlob1Name, alreadyExistingBlob1ContentType, alreadyExistingBlob1Contents))
 	require.NoError(t, helper.CreateBlob(containerClient, alreadyExistingBlob2Name, alreadyExistingBlob2ContentType, alreadyExistingBlob2Contents))
 
