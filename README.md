@@ -27,12 +27,12 @@ However, [soft delete for blobs](https://docs.microsoft.com/en-us/azure/storage/
 
 ### Configuration Options
 
-| name               | description                                                                                                                                  | required | default |
-|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------|----------|---------|
-| `connectionString` | Azure Storage connection string as described here: https://docs.microsoft.com/en-us/azure/storage/common/storage-configure-connection-string | `true`   |         |
-| `containerName`    | The name of the container to monitor.                                                                                                        | `true`   |         |
-| `pollingPeriod`    | The polling period for the CDC mode, formatted as a time.Duration string. Must be greater then `0`.                                          | `false`  | `1s`    |
-| `maxResults`       | The maximum number of items, per page, when reading container's items. The minimum value is `1`, maximum value is `5000`.                    | `false`  | `5000`  |
+| name               | description                                                                                                                                  | required | default  |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------|----------|----------|
+| `connectionString` | Azure Storage connection string as described here: https://docs.microsoft.com/en-us/azure/storage/common/storage-configure-connection-string | `true`   |          |
+| `containerName`    | The name of the container to monitor.                                                                                                        | `true`   |          |
+| `pollingPeriod`    | The polling period for the CDC mode, formatted as a time.Duration string. Must be greater then `0`.                                          | `false`  | `"1s"`   |
+| `maxResults`       | The maximum number of items, per page, when reading container's items. The minimum value is `1`, maximum value is `5000`.                    | `false`  | `"5000"` |
 
 ## Testing
 
