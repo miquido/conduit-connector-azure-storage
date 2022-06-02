@@ -29,22 +29,103 @@ import (
 func TestParseConfig(t *testing.T) {
 	fakerInstance := faker.New()
 
-	t.Run("Fails when Connection String is empty", func(t *testing.T) {
-		_, err := ParseConfig(map[string]string{
-			"nonExistentKey": "value",
+	for _, tt := range []struct {
+		name  string
+		error string
+		cfg   map[string]string
+	}{
+		{
+			name:  "Connection String is empty",
+			error: fmt.Sprintf("%q config value must be set", ConfigKeyConnectionString),
+			cfg: map[string]string{
+				"nonExistentKey": "value",
+			},
+		},
+		{
+			name:  "Container Name is empty",
+			error: fmt.Sprintf("%q config value must be set", ConfigKeyContainerName),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				"nonExistentKey":          "value",
+			},
+		},
+		{
+			name:  "Pooling Period has invalid format",
+			error: fmt.Sprintf("%q config value should be a valid duration", ConfigKeyPollingPeriod),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
+				ConfigKeyPollingPeriod:    "non-date format string",
+				"nonExistentKey":          "value",
+			},
+		},
+		{
+			name:  "Pooling Period is negative",
+			error: fmt.Sprintf("%q config value should be positive, got -1s", ConfigKeyPollingPeriod),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
+				ConfigKeyPollingPeriod:    "-1s",
+				"nonExistentKey":          "value",
+			},
+		},
+		{
+			name:  "Pooling Period is zero",
+			error: fmt.Sprintf("%q config value should be positive, got 0s", ConfigKeyPollingPeriod),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
+				ConfigKeyPollingPeriod:    "0s",
+				"nonExistentKey":          "value",
+			},
+		},
+		{
+			name:  "Max Results is not valid integer string",
+			error: fmt.Sprintf("failed to parse %q config value: strconv.ParseInt: parsing \"non-integer format string\": invalid syntax", ConfigKeyMaxResults),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
+				ConfigKeyMaxResults:       "non-integer format string",
+				"nonExistentKey":          "value",
+			},
+		},
+		{
+			name:  "Max Results is negative",
+			error: fmt.Sprintf("failed to parse %q config value: value must be greater than 0, -1 provided", ConfigKeyMaxResults),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
+				ConfigKeyMaxResults:       "-1",
+				"nonExistentKey":          "value",
+			},
+		},
+		{
+			name:  "Max Results is zero",
+			error: fmt.Sprintf("failed to parse %q config value: value must be greater than 0, 0 provided", ConfigKeyMaxResults),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
+				ConfigKeyMaxResults:       "0",
+				"nonExistentKey":          "value",
+			},
+		},
+		{
+			name:  "Max Results is greater than 5000",
+			error: fmt.Sprintf("failed to parse %q config value: value must not be grater than 5000, 5001 provided", ConfigKeyMaxResults),
+			cfg: map[string]string{
+				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
+				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
+				ConfigKeyMaxResults:       "5001",
+				"nonExistentKey":          "value",
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("Fails when: %s", tt.name), func(t *testing.T) {
+			_, err := ParseConfig(tt.cfg)
+
+			require.EqualError(t, err, tt.error)
 		})
-
-		require.EqualError(t, err, fmt.Sprintf("%q config value must be set", ConfigKeyConnectionString))
-	})
-
-	t.Run("Fails when Container Name is empty", func(t *testing.T) {
-		_, err := ParseConfig(map[string]string{
-			ConfigKeyConnectionString: fakerInstance.Internet().Query(),
-			"nonExistentKey":          "value",
-		})
-
-		require.EqualError(t, err, fmt.Sprintf("%q config value must be set", ConfigKeyContainerName))
-	})
+	}
 
 	t.Run("Returns config when all required config values were provided", func(t *testing.T) {
 		cfgRaw := map[string]string{
@@ -60,89 +141,6 @@ func TestParseConfig(t *testing.T) {
 		require.Equal(t, cfgRaw[ConfigKeyContainerName], config.ContainerName)
 		require.Equal(t, time.Second, config.PollingPeriod)
 		require.Equal(t, DefaultMaxResults, config.MaxResults)
-	})
-
-	t.Run("Fails when Pooling Period has invalid format", func(t *testing.T) {
-		_, err := ParseConfig(map[string]string{
-			ConfigKeyConnectionString: fakerInstance.Internet().Query(),
-			ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
-			ConfigKeyPollingPeriod:    "non-date format string",
-			"nonExistentKey":          "value",
-		})
-
-		require.EqualError(t, err, fmt.Sprintf("%q config value should be a valid duration", ConfigKeyPollingPeriod))
-	})
-
-	for _, tt := range []struct {
-		poolingPeriod string
-	}{
-		{
-			poolingPeriod: "-1s",
-		},
-		{
-			poolingPeriod: "0s",
-		},
-	} {
-		t.Run(fmt.Sprintf("Fails when Pooling Period is: %s", tt.poolingPeriod), func(t *testing.T) {
-			_, err := ParseConfig(map[string]string{
-				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
-				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
-				ConfigKeyPollingPeriod:    tt.poolingPeriod,
-				"nonExistentKey":          "value",
-			})
-
-			require.EqualError(t, err, fmt.Sprintf("%q config value should be positive, got %s", ConfigKeyPollingPeriod, tt.poolingPeriod))
-		})
-	}
-
-	t.Run("Fails when Max Results is not valid integer string", func(t *testing.T) {
-		cfgRaw := map[string]string{
-			ConfigKeyConnectionString: fakerInstance.Internet().Query(),
-			ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
-			ConfigKeyMaxResults:       "non-integer format string",
-			"nonExistentKey":          "value",
-		}
-
-		_, err := ParseConfig(cfgRaw)
-
-		require.EqualError(t, err, fmt.Sprintf("failed to parse %q config value: strconv.ParseInt: parsing %q: invalid syntax", ConfigKeyMaxResults, cfgRaw[ConfigKeyMaxResults]))
-	})
-
-	for _, tt := range []struct {
-		maxResults int64
-	}{
-		{
-			maxResults: -1,
-		},
-		{
-			maxResults: 0,
-		},
-	} {
-		t.Run(fmt.Sprintf("Fails when Max Reuslts is less than 1: %d", tt.maxResults), func(t *testing.T) {
-			cfgRaw := map[string]string{
-				ConfigKeyConnectionString: fakerInstance.Internet().Query(),
-				ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
-				ConfigKeyMaxResults:       strconv.FormatInt(tt.maxResults, 10),
-				"nonExistentKey":          "value",
-			}
-
-			_, err := ParseConfig(cfgRaw)
-
-			require.EqualError(t, err, fmt.Sprintf("failed to parse %q config value: value must be greater than 0, %s provided", ConfigKeyMaxResults, cfgRaw[ConfigKeyMaxResults]))
-		})
-	}
-
-	t.Run("Fails when Max Reuslts is greater than 5000", func(t *testing.T) {
-		cfgRaw := map[string]string{
-			ConfigKeyConnectionString: fakerInstance.Internet().Query(),
-			ConfigKeyContainerName:    fakerInstance.Lorem().Word(),
-			ConfigKeyMaxResults:       "5001",
-			"nonExistentKey":          "value",
-		}
-
-		_, err := ParseConfig(cfgRaw)
-
-		require.EqualError(t, err, fmt.Sprintf("failed to parse %q config value: value must not be grater than 5000, %s provided", ConfigKeyMaxResults, cfgRaw[ConfigKeyMaxResults]))
 	})
 
 	t.Run("Returns config when all config values were provided", func(t *testing.T) {
