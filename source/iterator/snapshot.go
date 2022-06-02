@@ -96,7 +96,7 @@ func (w *SnapshotIterator) producer() error {
 				resp := w.paginator.PageResponse()
 
 				for _, item := range resp.Segment.BlobItems {
-					// Reject item when it wasn't modified since the last iteration
+					// Check if maxLastModified should be updated
 					if w.maxLastModified.Before(*item.Properties.LastModified) {
 						w.maxLastModified = *item.Properties.LastModified
 					}
