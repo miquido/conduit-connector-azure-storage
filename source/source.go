@@ -108,7 +108,9 @@ func (s *Source) Read(ctx context.Context) (sdk.Record, error) {
 	return record, nil
 }
 
-func (s *Source) Ack(_ context.Context, _ sdk.Position) error {
+func (s *Source) Ack(ctx context.Context, position sdk.Position) error {
+	sdk.Logger(ctx).Debug().Str("position", string(position)).Msg("got ack")
+
 	return nil // no ack needed
 }
 
