@@ -36,7 +36,8 @@ However, [soft delete for blobs](https://docs.microsoft.com/en-us/azure/storage/
 
 ## Testing
 
-Run `make test` to run all the unit and integration tests.
+Run `make test` to run all the unit and integration tests, which require Docker to be installed and running. The command
+will handle starting and stopping docker containers for you.
 
 ## References
 
