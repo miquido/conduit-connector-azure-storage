@@ -46,12 +46,14 @@ func NewFromRecordPosition(recordPosition sdk.Position) (out Position, err error
 	return
 }
 
-// NewDefaultSnapshotPosition creates a new Position object with Position.Type set to TypeSnapshot, empty Position.Key and Position.Timestamp set to zero value.
+// NewDefaultSnapshotPosition creates a new Position object with Position.Type set to TypeSnapshot, empty Position.Key
+// and Position.Timestamp set to zero value.
 func NewDefaultSnapshotPosition() Position {
 	return Position{Type: TypeSnapshot}
 }
 
-// NewSnapshotPosition creates a new Position object with Position.Type set to TypeSnapshot and other properties filled with given values.
+// NewSnapshotPosition creates a new Position object with Position.Type set to TypeSnapshot and other properties filled
+// with given values.
 func NewSnapshotPosition(key string, timestamp time.Time) Position {
 	return Position{
 		Key:       key,
@@ -60,7 +62,8 @@ func NewSnapshotPosition(key string, timestamp time.Time) Position {
 	}
 }
 
-// NewCDCPosition creates a new Position object with Position.Type set to TypeCDC and other properties filled with given values.
+// NewCDCPosition creates a new Position object with Position.Type set to TypeCDC and other properties filled with
+// given values.
 func NewCDCPosition(key string, timestamp time.Time) Position {
 	return Position{
 		Key:       key,

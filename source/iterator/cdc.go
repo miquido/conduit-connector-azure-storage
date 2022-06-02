@@ -201,7 +201,8 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 	}, nil
 }
 
-// createDeletedRecord converts blob item into sdk.Record indicating that item was removed or returns error when failure.
+// createDeletedRecord converts blob item into sdk.Record indicating that item was removed or returns error
+// when failure.
 func (w *CDCIterator) createDeletedRecord(entry *azblob.BlobItemInternal) (sdk.Record, error) {
 	// Prepare position information
 	p := position.NewCDCPosition(*entry.Name, *entry.Properties.LastModified)
