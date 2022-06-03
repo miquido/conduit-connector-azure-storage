@@ -27,12 +27,106 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSource(t *testing.T) {
+func TestSource_FailsWhenConnectionStringIsInvalid(t *testing.T) {
+	ctx := context.Background()
+
+	var cfgRaw = map[string]string{
+		ConfigKeyConnectionString: "invalid connection string",
+		ConfigKeyContainerName:    "source-integration-tests",
+		ConfigKeyPollingPeriod:    "1500ms",
+		ConfigKeyMaxResults:       "1",
+	}
+
+	src := NewSource().(*Source)
+
+	require.NoError(t, src.Configure(ctx, cfgRaw))
+
+	t.Cleanup(func() {
+		_ = src.Teardown(ctx)
+	})
+
+	require.ErrorContains(t, src.Open(ctx, nil), "connector open error: could not create account connection client: connection string is either blank or malformed.")
+}
+
+func TestSource_FailsWhenConnectonCannotBeEstablished(t *testing.T) {
+	ctx := context.Background()
+
+	var cfgRaw = map[string]string{
+		ConfigKeyConnectionString: "DefaultEndpointsProtocol=http;AccountName=account;AccountKey=QWNjb3VudEtleQ==;BlobEndpoint=http://127.0.0.1:10101/account",
+		ConfigKeyContainerName:    "source-integration-tests",
+		ConfigKeyPollingPeriod:    "1500ms",
+		ConfigKeyMaxResults:       "1",
+	}
+
+	src := NewSource().(*Source)
+
+	require.NoError(t, src.Configure(ctx, cfgRaw))
+
+	t.Cleanup(func() {
+		_ = src.Teardown(ctx)
+	})
+
+	require.ErrorContains(t, src.Open(ctx, nil), "connector open error: could not establish a connection: ===== INTERNAL ERROR =====")
+}
+
+func TestSource_FailsWhenContainerDoesNotExist(t *testing.T) {
+	ctx := context.Background()
+
+	var (
+		containerName = "source-integration-tests"
+
+		cfgRaw = map[string]string{
+			ConfigKeyConnectionString: helper.GetConnectionString(),
+			ConfigKeyContainerName:    containerName,
+			ConfigKeyPollingPeriod:    "1500ms",
+			ConfigKeyMaxResults:       "1",
+		}
+	)
+
+	src := NewSource().(*Source)
+
+	require.NoError(t, src.Configure(ctx, cfgRaw))
+
+	t.Cleanup(func() {
+		_ = src.Teardown(ctx)
+	})
+
+	require.ErrorContains(t, src.Open(ctx, nil), "Description=The specified container does not exist.")
+}
+
+func TestSource_FailsWhenRecordPositionIsInvalid(t *testing.T) {
+	ctx := context.Background()
+
+	var (
+		containerName = "source-integration-tests"
+
+		cfgRaw = map[string]string{
+			ConfigKeyConnectionString: helper.GetConnectionString(),
+			ConfigKeyContainerName:    containerName,
+			ConfigKeyPollingPeriod:    "1500ms",
+			ConfigKeyMaxResults:       "1",
+		}
+	)
+
+	helper.PrepareContainer(t, helper.NewAzureBlobServiceClient(), containerName)
+
+	src := NewSource()
+
+	require.NoError(t, src.Configure(ctx, cfgRaw))
+
+	t.Cleanup(func() {
+		_ = src.Teardown(ctx)
+	})
+
+	require.EqualError(t, src.Open(ctx, sdk.Position("invalid gob object")), "connector open error: invalid or unsupported position: unexpected EOF")
+}
+
+func TestSource_ReadsContainerItemsWithSnapshotIteratorAndThenReadsAddedItemsWithCDCIterator(t *testing.T) {
 	ctx := context.Background()
 	fakerInstance := faker.New()
 
 	var (
-		containerName = "foo"
+		containerName = "source-integration-tests"
 
 		cfgRaw = map[string]string{
 			ConfigKeyConnectionString: helper.GetConnectionString(),
@@ -114,6 +208,50 @@ func TestSource(t *testing.T) {
 		// Read the second record polled
 		record3, err := src.Read(ctx)
 		require.Equal(t, sdk.Record{}, record3)
+		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
+	})
+}
+
+func TestSource_SnapshotIteratorReadsEmptyContainerAndThenSwitchedToCDCIterator(t *testing.T) {
+	ctx := context.Background()
+
+	var (
+		containerName = "source-integration-tests"
+
+		cfgRaw = map[string]string{
+			ConfigKeyConnectionString: helper.GetConnectionString(),
+			ConfigKeyContainerName:    containerName,
+			ConfigKeyPollingPeriod:    "1500ms",
+			ConfigKeyMaxResults:       "1",
+		}
+	)
+
+	helper.PrepareContainer(t, helper.NewAzureBlobServiceClient(), containerName)
+
+	src := NewSource().(*Source)
+
+	require.NoError(t, src.Configure(ctx, cfgRaw))
+	require.NoError(t, src.Open(ctx, nil))
+
+	t.Cleanup(func() {
+		_ = src.Teardown(ctx)
+	})
+
+	t.Run("Firstly, snapshot iterator runs and reads properly empty container", func(t *testing.T) {
+		record, err := src.Read(ctx)
+		require.Equal(t, sdk.Record{}, record)
+		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
+	})
+
+	t.Run("Secondly, snapshot iterator switches to CDC iterator", func(t *testing.T) {
+		record, err := src.Read(ctx)
+		require.Equal(t, sdk.Record{}, record)
+		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
+	})
+
+	t.Run("Thirdly, CDC iterator runs and reads properly empty container", func(t *testing.T) {
+		record, err := src.Read(ctx)
+		require.Equal(t, sdk.Record{}, record)
 		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
 	})
 }

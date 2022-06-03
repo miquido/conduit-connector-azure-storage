@@ -91,11 +91,13 @@ func TestSnapshotIterator(t *testing.T) {
 			require.True(t, helper.AssertRecordEquals(t, record2, record2Name, "text/plain", record2Contents))
 
 			// Let the Goroutine finish
-			require.NoError(t, iterator.tomb.Wait())
+			for iterator.tomb.Alive() {
+				continue
+			}
 
 			require.False(t, iterator.HasNext(ctx))
 			record3, err := iterator.Next(ctx)
-			require.NoError(t, err)
+			require.ErrorIs(t, err, ErrSnapshotIteratorIsStopped)
 			require.Equal(t, sdk.Record{}, record3)
 		})
 	}
@@ -140,11 +142,13 @@ func TestSnapshotIterator(t *testing.T) {
 		require.True(t, helper.AssertRecordEquals(t, record3, record3Name, "text/plain", record3Contents))
 
 		// Let the Goroutine finish
-		require.NoError(t, iterator.tomb.Wait())
+		for iterator.tomb.Alive() {
+			continue
+		}
 
 		require.False(t, iterator.HasNext(ctx))
 		record4, err := iterator.Next(ctx)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, ErrSnapshotIteratorIsStopped)
 		require.Equal(t, sdk.Record{}, record4)
 	})
 
@@ -197,6 +201,8 @@ func TestSnapshotIterator(t *testing.T) {
 			record1Contents = fakerInstance.Lorem().Sentence(16)
 			record2Name     = fmt.Sprintf("b%s", fakerInstance.File().FilenameWithExtension())
 			record2Contents = fakerInstance.Lorem().Sentence(16)
+			record3Name     = fmt.Sprintf("b%s", fakerInstance.File().FilenameWithExtension())
+			record3Contents = fakerInstance.Lorem().Sentence(16)
 		)
 
 		ctx, cancelFunc := context.WithCancel(context.Background())
@@ -205,6 +211,7 @@ func TestSnapshotIterator(t *testing.T) {
 
 		require.NoError(t, helper.CreateBlob(containerClient, record1Name, "text/plain", record1Contents))
 		require.NoError(t, helper.CreateBlob(containerClient, record2Name, "text/plain", record2Contents))
+		require.NoError(t, helper.CreateBlob(containerClient, record3Name, "text/plain", record3Contents))
 
 		iterator, err := NewSnapshotIterator(containerClient, snapshotPosition, 100)
 		require.NoError(t, err)

@@ -72,7 +72,11 @@ func (w *CDCIterator) HasNext(_ context.Context) bool {
 
 func (w *CDCIterator) Next(ctx context.Context) (sdk.Record, error) {
 	select {
-	case r := <-w.buffer:
+	case r, active := <-w.buffer:
+		if !active {
+			return sdk.Record{}, ErrCDCIteratorIsStopped
+		}
+
 		return r, nil
 
 	case <-w.tomb.Dead():

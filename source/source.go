@@ -16,6 +16,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -96,6 +97,10 @@ func (s *Source) Read(ctx context.Context) (sdk.Record, error) {
 
 	record, err := s.iterator.Next(ctx)
 	if err != nil {
+		if errors.Is(err, iterator.ErrSnapshotIteratorIsStopped) {
+			return sdk.Record{}, sdk.ErrBackoffRetry
+		}
+
 		return sdk.Record{}, fmt.Errorf("read error: %w", err)
 	}
 

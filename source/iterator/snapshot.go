@@ -67,11 +67,20 @@ func (w *SnapshotIterator) HasNext(_ context.Context) bool {
 
 func (w *SnapshotIterator) Next(ctx context.Context) (sdk.Record, error) {
 	select {
-	case r := <-w.buffer:
+	case r, active := <-w.buffer:
+		if !active {
+			return sdk.Record{}, ErrSnapshotIteratorIsStopped
+		}
+
 		return r, nil
 
 	case <-w.tomb.Dead():
-		return sdk.Record{}, w.tomb.Err()
+		err := w.tomb.Err()
+		if err == nil {
+			err = ErrSnapshotIteratorIsStopped
+		}
+
+		return sdk.Record{}, err
 
 	case <-ctx.Done():
 		return sdk.Record{}, ctx.Err()
@@ -80,6 +89,7 @@ func (w *SnapshotIterator) Next(ctx context.Context) (sdk.Record, error) {
 
 func (w *SnapshotIterator) Stop() {
 	w.tomb.Kill(ErrSnapshotIteratorIsStopped)
+	_ = w.tomb.Wait()
 }
 
 // producer reads the container and reports all files found.
@@ -87,76 +97,70 @@ func (w *SnapshotIterator) producer() error {
 	defer close(w.buffer)
 
 	for {
-		select {
-		case <-w.tomb.Dying():
-			return w.tomb.Err()
+		if w.paginator.NextPage(w.tomb.Context(context.TODO())) {
+			resp := w.paginator.PageResponse()
 
-		default:
-			if w.paginator.NextPage(w.tomb.Context(context.TODO())) {
-				resp := w.paginator.PageResponse()
-
-				for _, item := range resp.Segment.BlobItems {
-					// Check if maxLastModified should be updated
-					if w.maxLastModified.Before(*item.Properties.LastModified) {
-						w.maxLastModified = *item.Properties.LastModified
-					}
-
-					// Read the contents of the item
-					blobClient, err := w.client.NewBlobClient(*item.Name)
-					if err != nil {
-						return err
-					}
-
-					downloadResponse, err := blobClient.Download(w.tomb.Context(context.TODO()), nil)
-					if err != nil {
-						return err
-					}
-
-					rawBody, err := ioutil.ReadAll(downloadResponse.Body(&azblob.RetryReaderOptions{
-						MaxRetryRequests: 0,
-					}))
-					if err != nil {
-						return err
-					}
-
-					// Prepare the record position
-					p := position.NewSnapshotPosition(*item.Name, w.maxLastModified)
-
-					recordPosition, err := p.ToRecordPosition()
-					if err != nil {
-						return err
-					}
-
-					// Prepare the sdk.Record
-					record := sdk.Record{
-						Metadata: map[string]string{
-							"content-type": *item.Properties.ContentType,
-						},
-						Position:  recordPosition,
-						Payload:   sdk.RawData(rawBody),
-						Key:       sdk.RawData(*item.Name),
-						CreatedAt: *item.Properties.CreationTime,
-					}
-
-					// Send out the record if possible
-					select {
-					case <-w.tomb.Dying():
-						return w.tomb.Err()
-
-					case w.buffer <- record:
-						// sdk.Record was sent successfully
-					}
+			for _, item := range resp.Segment.BlobItems {
+				// Check if maxLastModified should be updated
+				if w.maxLastModified.Before(*item.Properties.LastModified) {
+					w.maxLastModified = *item.Properties.LastModified
 				}
 
-				continue
+				// Read the contents of the item
+				blobClient, err := w.client.NewBlobClient(*item.Name)
+				if err != nil {
+					return err
+				}
+
+				downloadResponse, err := blobClient.Download(w.tomb.Context(context.TODO()), nil)
+				if err != nil {
+					return err
+				}
+
+				rawBody, err := ioutil.ReadAll(downloadResponse.Body(&azblob.RetryReaderOptions{
+					MaxRetryRequests: 0,
+				}))
+				if err != nil {
+					return err
+				}
+
+				// Prepare the record position
+				p := position.NewSnapshotPosition(*item.Name, w.maxLastModified)
+
+				recordPosition, err := p.ToRecordPosition()
+				if err != nil {
+					return err
+				}
+
+				// Prepare the sdk.Record
+				record := sdk.Record{
+					Metadata: map[string]string{
+						"content-type": *item.Properties.ContentType,
+					},
+					Position:  recordPosition,
+					Payload:   sdk.RawData(rawBody),
+					Key:       sdk.RawData(*item.Name),
+					CreatedAt: *item.Properties.CreationTime,
+				}
+
+				// Send out the record if possible
+				select {
+				case w.buffer <- record:
+					// sdk.Record was sent successfully
+
+				case <-w.tomb.Dying():
+					return nil
+				}
 			}
 
-			// Report a storage reading error
-			if err := w.paginator.Err(); err != nil {
-				return err
-			}
-
-			return nil
+			continue
 		}
+
+		// Report a storage reading error
+		if err := w.paginator.Err(); err != nil {
+			return err
+		}
+
+		return nil
 	}
 }
