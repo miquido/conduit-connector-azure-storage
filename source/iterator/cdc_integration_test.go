@@ -24,6 +24,7 @@ import (
 
 	sdk "github.com/conduitio/conduit-connector-sdk"
 	"github.com/jaswdr/faker"
+	"github.com/miquido/conduit-connector-azure-storage/internal"
 	helper "github.com/miquido/conduit-connector-azure-storage/test"
 	"github.com/stretchr/testify/require"
 )
@@ -82,11 +83,13 @@ func TestCDCIterator(t *testing.T) {
 			record1, err := iterator.Next(ctx)
 			require.NoError(t, err)
 			require.True(t, helper.AssertRecordEquals(t, record1, record1Name, "text/plain", record1Contents))
+			require.Equal(t, internal.OperationInsert, record1.Metadata["action"])
 
 			require.True(t, iterator.HasNext(ctx))
 			record2, err := iterator.Next(ctx)
 			require.NoError(t, err)
 			require.True(t, helper.AssertRecordEquals(t, record2, record2Name, "text/plain", record2Contents))
+			require.Equal(t, internal.OperationInsert, record2.Metadata["action"])
 
 			// Let the Pooling Period pass and iterator to collect blobs
 			time.Sleep(time.Millisecond * 500)
@@ -123,11 +126,13 @@ func TestCDCIterator(t *testing.T) {
 		record1, err := iterator.Next(ctx)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record1, record1Name, "text/plain", record1Contents))
+		require.Equal(t, internal.OperationInsert, record1.Metadata["action"])
 
 		require.True(t, iterator.HasNext(ctx))
 		record2, err := iterator.Next(ctx)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record2, record2Name, "text/plain", record2Contents))
+		require.Equal(t, internal.OperationInsert, record2.Metadata["action"])
 
 		// Let the Pooling Period pass and iterator to collect blobs
 		time.Sleep(time.Millisecond * 500)
@@ -136,6 +141,7 @@ func TestCDCIterator(t *testing.T) {
 		record3, err := iterator.Next(ctx)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record3, record3Name, "text/plain", record3Contents))
+		require.Equal(t, internal.OperationInsert, record3.Metadata["action"])
 
 		// Let the Goroutine finish
 		time.Sleep(time.Millisecond * 500)
@@ -168,6 +174,7 @@ func TestCDCIterator(t *testing.T) {
 		record1, err := iterator.Next(ctx)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record1, record1Name, "text/plain", record1Contents))
+		require.Equal(t, internal.OperationInsert, record1.Metadata["action"])
 
 		// Stop the iterator
 		iterator.Stop()
@@ -210,6 +217,7 @@ func TestCDCIterator(t *testing.T) {
 		record1, err := iterator.Next(ctx)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record1, record1Name, "text/plain", record1Contents))
+		require.Equal(t, internal.OperationInsert, record1.Metadata["action"])
 
 		// Cancel the context
 		cancelFunc()
@@ -226,5 +234,40 @@ func TestCDCIterator(t *testing.T) {
 
 		require.EqualError(t, errN, "context canceled")
 		require.Equal(t, sdk.Record{}, recordN)
+	})
+
+	t.Run("Reads updated item", func(t *testing.T) {
+		var (
+			record1Name            = fakerInstance.File().FilenameWithExtension()
+			record1Contents        = fmt.Sprintf("a%s", fakerInstance.Lorem().Sentence(16))
+			record1ContentsUpdated = fmt.Sprintf("b%s", fakerInstance.Lorem().Sentence(16))
+		)
+
+		ctx := context.Background()
+		containerClient := helper.PrepareContainer(t, azureBlobServiceClient, containerName)
+
+		require.NoError(t, helper.CreateBlob(containerClient, record1Name, "text/plain", record1Contents))
+
+		iterator, err := NewCDCIterator(time.Millisecond*100, containerClient, time.Now().AddDate(0, 0, -1), 100)
+		require.NoError(t, err)
+
+		// Let the Goroutine start
+		time.Sleep(time.Millisecond * 500)
+
+		require.True(t, iterator.HasNext(ctx))
+		record1, err := iterator.Next(ctx)
+		require.NoError(t, err)
+		require.True(t, helper.AssertRecordEquals(t, record1, record1Name, "text/plain", record1Contents))
+		require.Equal(t, internal.OperationInsert, record1.Metadata["action"])
+
+		// Update the blob
+		time.Sleep(time.Second)
+
+		require.NoError(t, helper.CreateBlob(containerClient, record1Name, "text/plain", record1ContentsUpdated))
+
+		record2, err := iterator.Next(ctx)
+		require.NoError(t, err)
+		require.True(t, helper.AssertRecordEquals(t, record2, record1Name, "text/plain", record1ContentsUpdated))
+		require.Equal(t, internal.OperationInsert, record2.Metadata["action"])
 	})
 }

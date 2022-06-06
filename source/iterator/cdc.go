@@ -23,6 +23,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	sdk "github.com/conduitio/conduit-connector-sdk"
+	"github.com/miquido/conduit-connector-azure-storage/internal"
 	"github.com/miquido/conduit-connector-azure-storage/source/position"
 	"gopkg.in/tomb.v2"
 )
@@ -193,9 +194,19 @@ func (w *CDCIterator) createUpsertedRecord(entry *azblob.BlobItemInternal, objec
 		return sdk.Record{}, err
 	}
 
+	// Detect operation
+	var action internal.Operation
+
+	if entry.Properties.CreationTime == nil || entry.Properties.LastModified == nil || entry.Properties.CreationTime.Equal(*entry.Properties.LastModified) {
+		action = internal.OperationInsert
+	} else {
+		action = internal.OperationUpdate
+	}
+
 	// Return the record
 	return sdk.Record{
 		Metadata: map[string]string{
+			"action":       action,
 			"content-type": *object.ContentType,
 		},
 		Position:  recordPosition,
@@ -219,7 +230,7 @@ func (w *CDCIterator) createDeletedRecord(entry *azblob.BlobItemInternal) (sdk.R
 	// Return the record
 	return sdk.Record{
 		Metadata: map[string]string{
-			"action": "delete",
+			"action": internal.OperationDelete,
 		},
 		Position:  recordPosition,
 		Key:       sdk.RawData(p.Key),

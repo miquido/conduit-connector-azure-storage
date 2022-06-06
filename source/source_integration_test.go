@@ -18,7 +18,6 @@ package source
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -319,63 +318,4 @@ func TestSource_CDCIteratorOmitsAlreadyReadItems(t *testing.T) {
 	record2, err := src.Read(ctx)
 	require.Equal(t, sdk.Record{}, record2)
 	require.ErrorIs(t, err, sdk.ErrBackoffRetry)
-}
-
-func TestSource_CDCIteratorReadsUpdatesItem(t *testing.T) {
-	ctx := context.Background()
-	fakerInstance := faker.New()
-
-	var (
-		containerName = "source-integration-tests"
-
-		cfgRaw = map[string]string{
-			ConfigKeyConnectionString: helper.GetConnectionString(),
-			ConfigKeyContainerName:    containerName,
-			ConfigKeyPollingPeriod:    "100ms",
-			ConfigKeyMaxResults:       "100",
-		}
-	)
-
-	containerClient := helper.PrepareContainer(t, helper.NewAzureBlobServiceClient(), containerName)
-
-	var (
-		createdWhileWorking1Name           = "created-while-running-1.txt"
-		createdWhileWorking1ContentType    = "text/plain; charset=utf-8"
-		createdWhileWorking1Contents       = fmt.Sprintf("a%s", fakerInstance.Lorem().Sentence(16))
-		createdWhileWorking1ContentsUpdate = fmt.Sprintf("b%s", fakerInstance.Lorem().Sentence(16))
-	)
-
-	recordPosition, err := position.NewCDCPosition("", time.Now()).ToRecordPosition()
-	require.NoError(t, err)
-
-	time.Sleep(time.Second)
-
-	require.NoError(t, helper.CreateBlob(containerClient, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
-
-	src := NewSource().(*Source)
-
-	require.NoError(t, src.Configure(ctx, cfgRaw))
-	require.NoError(t, src.Open(ctx, recordPosition))
-
-	t.Cleanup(func() {
-		_ = src.Teardown(ctx)
-	})
-
-	time.Sleep(time.Second)
-
-	record1, err := src.Read(ctx)
-	require.True(t, helper.AssertRecordEquals(t, record1, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
-	require.NoError(t, src.Ack(ctx, record1.Position))
-
-	record2, err := src.Read(ctx)
-	require.Equal(t, sdk.Record{}, record2)
-	require.ErrorIs(t, err, sdk.ErrBackoffRetry)
-
-	require.NoError(t, helper.CreateBlob(containerClient, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1ContentsUpdate))
-
-	time.Sleep(time.Millisecond * 250)
-
-	record3, err := src.Read(ctx)
-	require.True(t, helper.AssertRecordEquals(t, record3, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1ContentsUpdate))
-	require.NoError(t, src.Ack(ctx, record1.Position))
 }

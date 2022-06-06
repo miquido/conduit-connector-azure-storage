@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/jaswdr/faker"
+	"github.com/miquido/conduit-connector-azure-storage/internal"
 	"github.com/miquido/conduit-connector-azure-storage/source/position"
 	helper "github.com/miquido/conduit-connector-azure-storage/test"
 	"github.com/stretchr/testify/require"
@@ -82,12 +83,14 @@ func TestCombinedIterator(t *testing.T) {
 		require.IsType(t, &SnapshotIterator{}, iterator.iterator)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record1, record1Name, "text/plain", record1Contents))
+		require.Equal(t, internal.OperationInsert, record1.Metadata["action"])
 
 		require.True(t, iterator.HasNext(ctx))
 		record2, err := iterator.Next(ctx)
 		require.IsType(t, &SnapshotIterator{}, iterator.iterator)
 		require.NoError(t, err)
 		require.True(t, helper.AssertRecordEquals(t, record2, record2Name, "text/plain", record2Contents))
+		require.Equal(t, internal.OperationInsert, record2.Metadata["action"])
 
 		// Let the Goroutine finish
 		time.Sleep(time.Millisecond * 500)
