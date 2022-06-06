@@ -18,11 +18,13 @@ package source
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	sdk "github.com/conduitio/conduit-connector-sdk"
 	"github.com/jaswdr/faker"
+	"github.com/miquido/conduit-connector-azure-storage/source/position"
 	helper "github.com/miquido/conduit-connector-azure-storage/test"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +50,7 @@ func TestSource_FailsWhenConnectionStringIsInvalid(t *testing.T) {
 	require.ErrorContains(t, src.Open(ctx, nil), "connector open error: could not create account connection client: connection string is either blank or malformed.")
 }
 
-func TestSource_FailsWhenConnectonCannotBeEstablished(t *testing.T) {
+func TestSource_FailsWhenConnectionCannotBeEstablished(t *testing.T) {
 	ctx := context.Background()
 
 	var cfgRaw = map[string]string{
@@ -254,4 +256,126 @@ func TestSource_SnapshotIteratorReadsEmptyContainerAndThenSwitchedToCDCIterator(
 		require.Equal(t, sdk.Record{}, record)
 		require.ErrorIs(t, err, sdk.ErrBackoffRetry)
 	})
+}
+
+func TestSource_CDCIteratorOmitsAlreadyReadItems(t *testing.T) {
+	ctx := context.Background()
+	fakerInstance := faker.New()
+
+	var (
+		containerName = "source-integration-tests"
+
+		cfgRaw = map[string]string{
+			ConfigKeyConnectionString: helper.GetConnectionString(),
+			ConfigKeyContainerName:    containerName,
+			ConfigKeyPollingPeriod:    "100ms",
+			ConfigKeyMaxResults:       "100",
+		}
+	)
+
+	containerClient := helper.PrepareContainer(t, helper.NewAzureBlobServiceClient(), containerName)
+
+	var (
+		alreadyExistingBlob1Name        = "already-existing-1.txt"
+		alreadyExistingBlob1ContentType = "text/plain; charset=utf-8"
+		alreadyExistingBlob1Contents    = fakerInstance.Lorem().Sentence(16)
+
+		alreadyExistingBlob2Name        = "already-existing-2.txt"
+		alreadyExistingBlob2ContentType = "text/plain; charset=utf-8"
+		alreadyExistingBlob2Contents    = fakerInstance.Lorem().Sentence(16)
+
+		createdWhileWorking1Name        = "created-while-running-1.txt"
+		createdWhileWorking1ContentType = "text/plain; charset=utf-8"
+		createdWhileWorking1Contents    = fakerInstance.Lorem().Sentence(16)
+	)
+
+	require.NoError(t, helper.CreateBlob(containerClient, alreadyExistingBlob1Name, alreadyExistingBlob1ContentType, alreadyExistingBlob1Contents))
+	require.NoError(t, helper.CreateBlob(containerClient, alreadyExistingBlob2Name, alreadyExistingBlob2ContentType, alreadyExistingBlob2Contents))
+
+	time.Sleep(time.Second)
+
+	recordPosition, err := position.NewCDCPosition("", time.Now()).ToRecordPosition()
+	require.NoError(t, err)
+
+	time.Sleep(time.Second)
+
+	require.NoError(t, helper.CreateBlob(containerClient, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
+
+	src := NewSource().(*Source)
+
+	require.NoError(t, src.Configure(ctx, cfgRaw))
+	require.NoError(t, src.Open(ctx, recordPosition))
+
+	t.Cleanup(func() {
+		_ = src.Teardown(ctx)
+	})
+
+	time.Sleep(time.Second)
+
+	record1, err := src.Read(ctx)
+	require.True(t, helper.AssertRecordEquals(t, record1, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
+	require.NoError(t, src.Ack(ctx, record1.Position))
+
+	record2, err := src.Read(ctx)
+	require.Equal(t, sdk.Record{}, record2)
+	require.ErrorIs(t, err, sdk.ErrBackoffRetry)
+}
+
+func TestSource_CDCIteratorReadsUpdatesItem(t *testing.T) {
+	ctx := context.Background()
+	fakerInstance := faker.New()
+
+	var (
+		containerName = "source-integration-tests"
+
+		cfgRaw = map[string]string{
+			ConfigKeyConnectionString: helper.GetConnectionString(),
+			ConfigKeyContainerName:    containerName,
+			ConfigKeyPollingPeriod:    "100ms",
+			ConfigKeyMaxResults:       "100",
+		}
+	)
+
+	containerClient := helper.PrepareContainer(t, helper.NewAzureBlobServiceClient(), containerName)
+
+	var (
+		createdWhileWorking1Name           = "created-while-running-1.txt"
+		createdWhileWorking1ContentType    = "text/plain; charset=utf-8"
+		createdWhileWorking1Contents       = fmt.Sprintf("a%s", fakerInstance.Lorem().Sentence(16))
+		createdWhileWorking1ContentsUpdate = fmt.Sprintf("b%s", fakerInstance.Lorem().Sentence(16))
+	)
+
+	recordPosition, err := position.NewCDCPosition("", time.Now()).ToRecordPosition()
+	require.NoError(t, err)
+
+	time.Sleep(time.Second)
+
+	require.NoError(t, helper.CreateBlob(containerClient, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
+
+	src := NewSource().(*Source)
+
+	require.NoError(t, src.Configure(ctx, cfgRaw))
+	require.NoError(t, src.Open(ctx, recordPosition))
+
+	t.Cleanup(func() {
+		_ = src.Teardown(ctx)
+	})
+
+	time.Sleep(time.Second)
+
+	record1, err := src.Read(ctx)
+	require.True(t, helper.AssertRecordEquals(t, record1, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1Contents))
+	require.NoError(t, src.Ack(ctx, record1.Position))
+
+	record2, err := src.Read(ctx)
+	require.Equal(t, sdk.Record{}, record2)
+	require.ErrorIs(t, err, sdk.ErrBackoffRetry)
+
+	require.NoError(t, helper.CreateBlob(containerClient, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1ContentsUpdate))
+
+	time.Sleep(time.Millisecond * 250)
+
+	record3, err := src.Read(ctx)
+	require.True(t, helper.AssertRecordEquals(t, record3, createdWhileWorking1Name, createdWhileWorking1ContentType, createdWhileWorking1ContentsUpdate))
+	require.NoError(t, src.Ack(ctx, record1.Position))
 }
