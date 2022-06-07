@@ -74,9 +74,14 @@ func NewCDCPosition(key string, timestamp time.Time) Position {
 
 // Position represents blob item position metadata.
 type Position struct {
-	Key       string
+	// Key represents the name of blob item
+	Key string
+
+	// Timestamp represents the blob item's last modification time
 	Timestamp time.Time
-	Type      Type
+
+	// Type represents the type of iterator that produced the record
+	Type Type
 }
 
 // ToRecordPosition converts Position into sdk.Position.
