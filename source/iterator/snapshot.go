@@ -97,8 +97,10 @@ func (w *SnapshotIterator) Stop() {
 func (w *SnapshotIterator) producer() error {
 	defer close(w.buffer)
 
+	ctx := context.Background()
+
 	for {
-		if w.paginator.NextPage(w.tomb.Context(context.TODO())) {
+		if w.paginator.NextPage(w.tomb.Context(ctx)) {
 			resp := w.paginator.PageResponse()
 
 			for _, item := range resp.Segment.BlobItems {
@@ -113,7 +115,7 @@ func (w *SnapshotIterator) producer() error {
 					return err
 				}
 
-				downloadResponse, err := blobClient.Download(w.tomb.Context(context.TODO()), nil)
+				downloadResponse, err := blobClient.Download(w.tomb.Context(ctx), nil)
 				if err != nil {
 					return err
 				}

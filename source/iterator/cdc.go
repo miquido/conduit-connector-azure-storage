@@ -114,7 +114,9 @@ func (w *CDCIterator) producer() error {
 				},
 			})
 
-			for blobListPager.NextPage(w.tomb.Context(context.TODO())) {
+			ctx := context.Background()
+
+			for blobListPager.NextPage(w.tomb.Context(ctx)) {
 				resp := blobListPager.PageResponse()
 
 				for _, item := range resp.Segment.BlobItems {
@@ -141,7 +143,7 @@ func (w *CDCIterator) producer() error {
 							return err
 						}
 
-						downloadResponse, err := blobClient.Download(w.tomb.Context(context.TODO()), nil)
+						downloadResponse, err := blobClient.Download(w.tomb.Context(ctx), nil)
 						if err != nil {
 							return err
 						}
