@@ -91,6 +91,7 @@ func (w *CDCIterator) Next(ctx context.Context) (sdk.Record, error) {
 func (w *CDCIterator) Stop() {
 	w.ticker.Stop()
 	w.tomb.Kill(ErrCDCIteratorIsStopped)
+	_ = w.tomb.Wait()
 }
 
 // producer reads the container and reports all file changes since last time.
